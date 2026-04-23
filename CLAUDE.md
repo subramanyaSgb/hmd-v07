@@ -1,104 +1,41 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-# You are updating the Obsidian guidebook vault after code changes.
+## Repository State
 
-STEP 1: DETECT CHANGES
-- Read GUIDEBOOK_MANIFEST.json for documented files and hashes
-- Scan all source files, compute current hashes
-- Report: ✏️ MODIFIED | ➕ NEW | ❌ DELETED | ✅ UNCHANGED
+Fresh git repo at `Development/Version_07/` (initial commit on `main`). The parent `HMD/` folder previously hosted a 1.8GB monorepo covering `Version_01`..`Version_06`, legacy docs, and `.7z` backups. That parent repo is archived and **not** the working tree — always work inside `Version_07/`.
 
-STEP 2: UPDATE MODIFIED FILE NOTES
-- Open the existing note AND the updated source file
-- Identify exactly which lines/functions/sections changed
-- REWRITE the code walkthrough for changed sections — show the NEW code with line-by-line comments
-- Preserve unchanged sections
-- Update frontmatter `updated` date
+**Branch context:** The codebase landed here after a heavy strip-down:
+- Removed MFA / OAuth / email-verification flows
+- Removed Geofence model + 9 other dead models
+- Removed legacy `api/v1` router registration
+- Removed frontend dark mode (`ThemeContext` deleted)
+- Removed sound alerts
 
-STEP 3: CREATE NOTES FOR NEW FILES
-- Full documentation following Phase 1 format — actual code with line-by-line explanations
-- Add to relevant MOC
-- Add to manifest
-
-STEP 4: HANDLE DELETED FILES
-- Remove note, fix broken [[wikilinks]], remove from MOC and manifest
-
-STEP 5: CASCADE UPDATES
-- API changed → update endpoint note + frontend caller note
-- Model changed → update table note + every service/route that uses it
-- Shared util changed → update every note that references it
-- New env var → update Environment Variables note
-- New route → update MOC — API Reference
-
-STEP 6: UPDATE CHANGELOG + MANIFEST
-- Append to Changelog.md with date, modified/added/deleted notes, cascading updates
-- Update manifest hashes, timestamps, coverage percentage
-
-CRITICAL: Updated sections MUST show the new actual code with line-by-line comments. Do NOT just write "updated the function" — show the code.
-
-## 📖 Obsidian Guidebook Auto-Update Rule
-
-This project has a living documentation vault at `docs/guidebook/`.
-
-After completing ANY code change (feature, bugfix, refactor, config change), you MUST:
-
-1. **Identify** every file you created, modified, or deleted in this session.
-2. **For each modified file:**
-   - Open its note in `docs/guidebook/`
-   - Find the code walkthrough section(s) affected by your change
-   - Replace the old code block with the NEW code, with fresh line-by-line inline comments
-   - Update frontmatter `updated` date
-   - Update/add callouts if bugs were fixed or new issues found
-3. **For each new file:**
-   - Create a full Obsidian note with:
-     - YAML frontmatter (title, path, type, tags, status, dates, related [[wikilinks]])
-     - Dependencies table
-     - THE ACTUAL CODE in fenced blocks with line-by-line comments explaining every line
-     - Callouts ([!warning], [!bug], [!tip], [!info], [!todo])
-   - Add to relevant MOC note
-   - Add to GUIDEBOOK_MANIFEST.json
-4. **For each deleted file:**
-   - Remove its note
-   - Fix broken [[wikilinks]] in other notes
-   - Remove from MOC and manifest
-5. **Cascade updates:**
-   - API endpoint changed → update endpoint note + frontend component notes that call it
-   - Model/schema changed → update table note + every service/route note that queries it
-   - Shared utility changed → update every note that imports it
-   - Env variable added/removed → update Environment Variables note
-6. **Append to Changelog.md** with date and list of all doc changes
-7. **Update GUIDEBOOK_MANIFEST.json** with new file hashes
-
-### Code Documentation Standard
-- SHOW the actual code in ``` blocks — never summarize
-- EVERY line gets an inline comment: what, why, connection, technology
-- Database queries show equivalent SQL
-- Return values name the frontend consumer
-- Use [[wikilinks]] for all cross-references
-- Use callouts for warnings, bugs, tips, business rules
-
-This is NOT optional. The guidebook is a living document. If code changes but docs don't, the guidebook becomes a lie.
+Anything referencing those features in older docs/comments is stale.
 
 ## Project Overview
 
-Hot Metal Distribution (HMD) System - A logistics management system for tracking hot metal (molten iron) transportation between producers (Blast Furnaces) and consumers (Steel Melting Shops) in a steel plant. The system manages torpedo ladle fleet, trip scheduling, distribution planning, and live operations monitoring.
+Hot Metal Distribution (HMD) — logistics system for tracking molten iron transport between producers (Blast Furnaces) and consumers (Steel Melting Shops) in a steel plant. Manages torpedo ladle fleet, trip scheduling, distribution planning, live operations monitoring, converter/equipment tracking, weighbridge records.
 
 ## Tech Stack
 
-- **Frontend**: React 19 + Vite 7, React Router for URL-based navigation, TypeScript (incremental migration)
-- **Backend**: FastAPI with uvicorn, PostgreSQL via SQLAlchemy ORM
-- **Auth**: JWT tokens (python-jose), bcrypt password hashing
-- **Environment**: Conda for Python (hmd_env), npm for frontend
-- **Charts**: Recharts for data visualization
-- **PDF Export**: jsPDF with jspdf-autotable
-- **Cache**: Redis (optional, with in-memory fallback)
+- **Frontend**: React 19 + Vite 7, React Router v7, TypeScript (incremental migration — `.ts`/`.tsx` alongside `.jsx`)
+- **Backend**: FastAPI + uvicorn, PostgreSQL via SQLAlchemy ORM, Alembic migrations
+- **Auth**: JWT (python-jose), bcrypt password hashing — **local auth only** (no MFA/OAuth)
+- **Environment**: Conda for Python (`hmd_env`), npm for frontend
+- **Charts**: Recharts
+- **PDF Export**: jsPDF + jspdf-autotable
+- **Cache**: Redis optional, in-memory ThreadSafeCache fallback
+- **Observability**: OpenTelemetry (OTLP gRPC exporter)
+- **Integrations**: WhatsApp notification service (Node.js sidecar in `whatsapp-service/`)
 
 ## Development Commands
 
 ### Quick Start (Windows)
 ```bash
-app.bat      # Interactive menu to start/stop all services
+app.bat      # Interactive menu — start/stop all services, health check
 ```
 
 ### Backend
@@ -121,22 +58,26 @@ npm run lint     # ESLint check
 ```bash
 conda activate hmd_env
 
-# Run all tests (133 passing, 43% coverage)
+# Run all tests (~187 test functions across 10 files)
 pytest backend/
 
-# Run with verbose output
+# Verbose output
 pytest backend/ -v
 
-# Run with coverage report
+# Coverage report
 pytest backend/ --cov=backend --cov-report=html
 
-# Test categories
-pytest backend/tests/test_auth.py           # Authentication & authorization tests
-pytest backend/tests/test_trips.py          # Trip lifecycle tests
-pytest backend/tests/test_utils.py          # Utility function tests
-pytest backend/tests/test_security.py       # Security feature tests (lockout, rate limit, CSRF)
-pytest backend/tests/test_cache.py          # Caching tests
-pytest backend/tests/test_validation.py     # Trip validation tests
+# Test files
+pytest backend/tests/test_auth.py             # Auth & authorization
+pytest backend/tests/test_trips.py            # Trip lifecycle
+pytest backend/tests/test_security.py         # Lockout, rate limit, CSRF
+pytest backend/tests/test_trip_validation.py  # Status transition / validation
+pytest backend/tests/test_constants.py        # Trip status constants
+pytest backend/tests/test_converters.py       # Converter model / routes
+pytest backend/tests/test_fleet.py            # Fleet management
+pytest backend/tests/test_health.py           # Health endpoint
+pytest backend/tests/test_locations.py        # Location coordinates
+pytest backend/tests/test_maintenance.py      # Maintenance scheduling
 ```
 
 ### Database Migrations (Alembic)
@@ -144,160 +85,156 @@ pytest backend/tests/test_validation.py     # Trip validation tests
 conda activate hmd_env
 cd backend
 
-# Check current migration version
-python -m alembic current
-
-# View migration history
-python -m alembic history
-
-# Generate new migration (auto-detect model changes)
-python -m alembic revision --autogenerate -m "description_of_change"
-
-# Apply all pending migrations
-python -m alembic upgrade head
-
-# Rollback one migration
-python -m alembic downgrade -1
-
-# Rollback to specific revision
-python -m alembic downgrade <revision_id>
+python -m alembic current                                    # Current version
+python -m alembic history                                    # History
+python -m alembic revision --autogenerate -m "<description>" # Auto-detect model changes
+python -m alembic upgrade head                               # Apply all
+python -m alembic downgrade -1                               # Rollback one
+python -m alembic downgrade <revision_id>                    # Rollback to specific
 ```
 
-**Legacy migrations (deprecated):**
-```bash
-python backend/migrations/run_migration.py              # Trip expected columns
-python backend/migrations/add_audit_trail_columns.py    # Audit trail columns
-```
+Migration files: `backend/alembic/versions/`. Recent strips visible as `g1h2i3j4k5l6_strip_mfa_oauth_email_verification.py` and `h1i2j3k4l5m6_drop_dead_tables.py`.
 
 ## Architecture
 
 ### Backend Structure (FastAPI)
-- `backend/main.py` - App entry, CORS config, router registration, middleware
-- `backend/routes/` - API endpoints (modular architecture):
+- `backend/main.py` — app entry, CORS, router registration, middleware, startup validation
+- `backend/constants.py` — `TripStatus` constants + helper predicates (`is_active`, `can_cancel`, etc.)
+- `backend/database/models.py` — SQLAlchemy models (soft delete, audit columns)
+- `backend/database/init_db.py` — inline env validation, default system settings seed
+- `backend/database/engine.py` — SQLAlchemy engine/session config
+- `backend/schemas.py` — Pydantic request/response models
+- `backend/logger.py` — logging config
 
-  **Core Services:**
-  - `auth.py` - Login, register, token refresh, logout with token blacklist
-  - `config.py` - HM Matrix configuration, system settings
-  - `fleet.py` - Torpedo fleet management
-  - `live_operations.py` - Real-time deviation tracking & thresholds
-  - `logs.py` - Audit trail API with filtering & export
-  - `locations.py` - Plant node coordinates
-  - `maintenance.py` - Maintenance scheduling
-  - `notifications.py` - User notifications
-  - `reports.py` - Report generation & export
-  - `users.py` - User management
+**Routes (`backend/routes/`):**
 
-  **Planning Routes** (split from `plans.py` for modularity):
-  - `daily_plans.py` - Daily capacity management with caching
-  - `monthly_plans.py` - Monthly planning & dashboard summaries
-  - `distributions.py` - Distribution optimization (PuLP linear programming)
+Core services:
+- `auth.py` — login, register, token refresh, logout with token blacklist
+- `config.py` — HM Matrix + system settings
+- `fleet.py` — torpedo fleet management
+- `live_operations.py` — real-time deviation tracking
+- `logs.py` — audit trail API with filtering + export
+- `locations.py` — plant node coordinates
+- `maintenance.py` — maintenance scheduling
+- `notifications.py` — user notifications
+- `reports.py` — report generation + export
+- `users.py` — user management
+- `system.py` — system-level health/stats endpoints (prefix `/api`)
+- `converters.py` — converter/equipment units (LD, ZPF, EAF)
+- `whatsapp.py` — WhatsApp notification integration
+- `weighbridge.py` — weighbridge CRUD + records (two routers in one file)
 
-  **Trip Routes** (split from `trips.py` for modularity):
-  - `trip_crud.py` - CRUD operations, queries, history
-  - `trip_lifecycle.py` - Status updates, expected time calculations
-  - `trip_assignment.py` - Torpedo assignment, trip generation
+Trip routes (split for modularity):
+- `trip_crud.py` — CRUD, queries, history
+- `trip_lifecycle.py` — status updates, expected time calculations
+- `trip_assignment.py` — torpedo assignment, trip generation
 
-  **Analytics Routes** (split from `analytics.py` for modularity):
-  - `statistics.py` - General KPIs and statistics
-  - `deviation_analytics.py` - Deviation analysis (6 specialized endpoints)
-  - `performance_analytics.py` - User-specific performance metrics
+Analytics routes (split for modularity):
+- `statistics.py` — general KPIs
+- `deviation_analytics.py` — deviation analysis (6 specialized endpoints)
+- `performance_analytics.py` — user-specific metrics
 
-  **Note:** Original `plans.py`, `trips.py`, and `analytics.py` still exist for backward compatibility.
-
-- `backend/database/models.py` - SQLAlchemy models with soft delete support
-- `backend/schemas.py` - Pydantic request/response models
+Planning routes:
+- `daily_plans.py` — daily capacity with caching
+- `plans.py` — **hosts BOTH** monthly planning (`get_monthly_plans()` ~line 724+) AND distribution optimization (`generate_optimized_plan()` ~line 92). Earlier plans to split into `monthly_plans.py` and `distributions.py` were reverted — those files do not exist.
 
 ### Backend Utilities
-Production-grade utilities for security, observability, data management, and infrastructure:
 
 **Security:**
-- `backend/utils/security.py` - JWT auth, password hashing, `require_roles()` decorator, token blacklist
-- `backend/utils/lockout.py` - Account lockout protection (5 failed attempts → 15min lockout)
-- `backend/utils/rate_limit.py` - Rate limiting (auth: 5/min, high: 60/min, medium: 20/min, low: 10/min)
-- `backend/utils/csrf.py` - CSRF protection with double-submit cookie pattern
+- `backend/utils/security.py` — JWT auth, password hashing, `require_roles()`, token blacklist
+- `backend/utils/lockout.py` — account lockout (5 fails → 15min default)
+- `backend/utils/rate_limit.py` — slowapi-based tiers (auth: 5/min, high: 60, medium: 20, low: 10)
+- `backend/utils/csrf.py` — double-submit cookie pattern
 
 **Observability:**
-- `backend/utils/tracing.py` - OpenTelemetry distributed tracing with correlation IDs
-- `backend/utils/activity_logger.py` - Atomic audit logging with retry logic and change tracking
+- `backend/utils/tracing.py` — OpenTelemetry tracing, correlation IDs
+- `backend/utils/activity_logger.py` — atomic audit logging, retry logic, change diff
 
-**Data Management:**
-- `backend/utils/soft_delete.py` - Soft delete with `active_only()`, `restore()`, `is_deleted()` helpers
-- `backend/utils/trip_validation.py` - Status transition validation, timestamp monotonicity, stuck trip detection
-- `backend/utils/errors.py` - Structured error handling with categorized error codes (1xxx-9xxx)
+**Data management:**
+- `backend/utils/soft_delete.py` — `active_only()`, `restore()`, `is_deleted()`
+- `backend/utils/trip_validation.py` — status transition rules, timestamp monotonicity, stuck trip detection
+- `backend/utils/errors.py` — structured error classes + categorized codes
+- `backend/utils/analytics_helpers.py` — deviation/KPI calculation helpers
 
 **Infrastructure:**
-- `backend/utils/redis_cache.py` - Redis cache with automatic in-memory fallback
-- `backend/utils/cache.py` - ThreadSafeCache for single-process fallback
-- `backend/utils/env_validator.py` - Environment variable validation at startup
+- `backend/utils/redis_cache.py` — Redis with in-memory fallback
+- `backend/utils/cache.py` — ThreadSafeCache for single-process mode
+
+**Integrations:**
+- `backend/utils/email_service.py` — email sending (stubbed after MFA/verification strip; check before using)
+- `backend/utils/whatsapp_service.py` — WhatsApp API client
+- `backend/utils/whatsapp_templates.py` — message templates
+
+**Note:** No dedicated `env_validator.py` — env validation is inline in `main.py` / `init_db.py`.
 
 ### Health Endpoint
 
-**Health Check:**
 ```
 GET /health
 ```
 Response:
 ```json
-{
-  "status": "healthy",
-  "database": "connected"
-}
+{ "status": "healthy", "database": "connected" }
 ```
-Returns 503 Service Unavailable if database connection fails.
+Returns 503 if database is unreachable.
 
-**OpenTelemetry Tracing:**
-- Distributed tracing via OpenTelemetry (OTLP gRPC exporter)
-- Correlation ID tracking in `X-Correlation-ID` header
-- FastAPI and SQLAlchemy auto-instrumentation
-- Export to Jaeger or any OTLP-compatible backend
-- Manual span creation: `@trace_span("operation_name")` decorator
+### OpenTelemetry Tracing
+- FastAPI + SQLAlchemy auto-instrumentation
+- Correlation ID in `X-Correlation-ID` header
+- OTLP gRPC exporter → Jaeger or OTLP-compatible backend
+- Manual span decorator: `@trace_span("operation_name")`
 
 ### Frontend Structure (React)
-- `frontend/src/App.jsx` - Main app with React Router, role-based route protection
-- `frontend/src/pages/` - Page components:
-  - `Dashboard.jsx` - Main overview with KPIs
-  - `Operations.jsx` - Node-specific operations view
-  - `TripManagement.jsx` - Trip lifecycle management
-  - `FleetManagement.jsx` - Torpedo fleet management
-  - `DailyPlanning.jsx` - Daily capacity planning
-  - `MonthlyPlanning.jsx` - Strategic planning with history tab and System Settings
-  - `Configuration.jsx` - HM Matrix config (travel times, fill/unload times)
-  - `Statistics.jsx` - Analytics with admin/producer/consumer views
-  - `DeviationAnalytics.jsx` - Admin-only deviation analysis with trends, root cause, comparisons
-  - `Reports.jsx` - Report generation with export options
-  - `ActivityMonitoring.jsx` - Audit trail viewer
-  - `MaintenanceScheduling.jsx` - Maintenance calendar
-- `frontend/src/context/` - React contexts:
-  - `AuthContext.jsx` - User authentication state
-  - `ThemeContext.jsx` - Light/dark mode toggle
-  - `NotificationContext.jsx` - Toast notifications
-  - `HeaderContext.jsx` - Dynamic header content
-- `frontend/src/utils/api.ts` - Centralized API client with JWT handling (TypeScript)
-- `frontend/src/types/` - TypeScript type definitions
+- `frontend/src/App.jsx` — main app, React Router, role-based protection, exports `PAGE_ID_TO_PATH`
+- `frontend/src/pages/`:
+  - `LoginPage.jsx` — login entry
+  - `Dashboard.jsx` — KPI overview
+  - `Operations.jsx` — node-specific operations (admin sees tabs for all nodes)
+  - `TripManagement.jsx` — trip lifecycle
+  - `FleetManagement.jsx` — torpedo fleet
+  - `DailyPlanning.jsx` — daily capacity
+  - `MonthlyPlanning.jsx` — strategic planning + System Settings
+  - `Configuration.jsx` — HM Matrix (travel, fill, unload times)
+  - `Statistics.jsx` — admin/producer/consumer analytics
+  - `DeviationAnalytics.jsx` — admin deviation dashboard
+  - `Reports.jsx` — report generation + export
+  - `ActivityMonitoring.jsx` — audit trail viewer
+  - `MaintenanceScheduling.jsx` — maintenance calendar
+  - `Settings.jsx` — user settings
+- `frontend/src/context/`:
+  - `AuthContext.jsx` — user authentication state
+  - `NotificationContext.jsx` — toast notifications
+  - `HeaderContext.jsx` — dynamic header content
+  - **(No `ThemeContext` — dark mode was stripped.)**
+- `frontend/src/utils/api.ts` — centralized API client, JWT handling, CSRF header (TypeScript)
+- `frontend/src/types/` — TypeScript type definitions
 
 ### Key Domain Models
 
-**Trip Lifecycle (14 stages, status 0-13):**
+**Trip Lifecycle (16 statuses, 0-15) — defined in `backend/constants.py`:**
 ```
-0: Pending       → Trip created, awaiting torpedo assignment
-1: Assigned      → Torpedo assigned, expected times calculated
-2: WB_Tare_Entry → Arrived at weighbridge (empty)
-3: WB_Tare_Rec   → Tare weight measured and stored
-4: P_Entered     → Torpedo entered producer facility
-5: P_Loading     → Loading started
-6: P_Loaded      → Loading completed
-7: P_Exited      → Exited producer, in transit
-8: WB_Gross_Entry→ Arrived at weighbridge (full)
-9: WB_Gross_Rec  → Gross weight measured and stored
-10: C_Entered    → Arrived at consumer facility
-11: C_Unloading  → Unloading started
-12: C_Unloaded   → Unloading completed
-13: Completed    → Trip finished, exited consumer
+0: PENDING            Trip created, awaiting torpedo assignment
+1: ASSIGNED           Torpedo assigned, expected times calculated
+2: WB_TARE_ENTRY      Arrived at weighbridge (empty)
+3: WB_TARE_RECORDED   Tare weight measured
+4: PRODUCER_ENTERED   Entered producer facility
+5: LOADING_STARTED    Loading begins
+6: LOADING_ENDED      Loading complete
+7: PRODUCER_EXITED    Exited producer, in transit
+8: WB_GROSS_ENTRY     Arrived at weighbridge (full)
+9: WB_GROSS_RECORDED  Gross weight measured
+10: CONSUMER_ENTERED  Arrived at consumer facility
+11: UNLOADING_STARTED Unloading begins
+12: UNLOADING_ENDED   Unloading complete
+13: COMPLETED         Trip finished (exited consumer)
+14: CANCELED          Trip canceled (pre-execution)
+15: ABORTED           Trip aborted mid-execution
 ```
+Helpers in `constants.py`: `is_active()`, `is_at_producer()`, `is_at_consumer()`, `is_at_weighbridge()`, `can_cancel()`, `can_abort()`.
 
 **Live Operations Intelligence:**
 - Expected times calculated from HM Matrix at torpedo assignment
-- Phase-level deviation tracking (expected vs actual at each stage)
+- Phase-level deviation tracking (expected vs actual per stage)
 - Configurable thresholds: warning (10min), alert (20min), critical (30min)
 - Shift tracking: day/night/afternoon
 
@@ -311,85 +248,119 @@ Critical: >30 min delay
 ```
 
 **Deviation Analytics Endpoints:**
-- `/api/statistics/deviation-summary` - Counts by category, min/max/avg deviation
-- `/api/statistics/deviation-by-node` - Per producer/consumer metrics
-- `/api/statistics/deviation-by-phase` - Loading/Transit/Unloading breakdown
-- `/api/statistics/deviation-trends` - Time-series data (daily or monthly for year view)
-- `/api/statistics/deviation-comparison` - Period-over-period comparison
-- `/api/statistics/root-cause-analysis` - By shift, day of week, worst routes
+- `/api/statistics/deviation-summary` — counts by category, min/max/avg
+- `/api/statistics/deviation-by-node` — per producer/consumer
+- `/api/statistics/deviation-by-phase` — Loading/Transit/Unloading breakdown
+- `/api/statistics/deviation-trends` — time-series (daily or monthly)
+- `/api/statistics/deviation-comparison` — period-over-period
+- `/api/statistics/root-cause-analysis` — shift, day of week, worst routes
 
-**Other Models:**
-- `DailyPlan` - Producer/consumer capacity (Primary→Revised→Confirmed)
-- `DistributionAssignment` - Links producers to consumers with quantity/trips
-- `FleetManagement` - Torpedo tracking (Operating/Maintenance status)
-- `UserActivity` - Audit trail with entity tracking and change history
-- `Weighbridge` - Physical weighbridge units with location coordinates and status
-- `WeighbridgeRecord` - Tare/gross weight measurements per trip
+**Models (in `backend/database/models.py`):**
+
+Users & auth:
+- `User` — SoftDeleteMixin, email column retained (verification stripped)
+- `LoginAttempt` — brute-force tracking
+
+Fleet & plant:
+- `FleetManagement` — torpedo tracking (Operating/Maintenance) — SoftDeleteMixin
+- `FleetLiveLocation` — real-time GPS/status
+- `LocationCoordinate` — plant node mapping
+- `MaintenanceSchedule` — maintenance windows
+- `NodeStatusHistory` — node operational status changes
+
+Trips:
+- `Trip` — core trip record — SoftDeleteMixin
+- `Weighbridge` — physical weighbridge units
+- `WeighbridgeRecord` — tare/gross measurements per trip
+
+Converter/equipment:
+- `Converter` — LD/ZPF/EAF vessels
+- `TripConverterDistribution` — trip→converter mapping
+- `ConverterStatusHistory` — converter lifecycle events
+
+Planning:
+- `DailyPlan` — producer/consumer capacity (Primary→Revised→Confirmed)
+- `DistributionAssignment` — links producers to consumers with quantity/trips
+- `TripTimeConfig` — travel times between nodes
+- `ConsumerConfig` / `ProducerConfig` — node-specific settings
+- `RoutingConstraint` — route restrictions
+
+System:
+- `SystemConfig` — global settings (TRAVEL_TO_PRODUCER_MINUTES, EXIT_BUFFER_MINUTES, etc.)
+- `DeviationThresholdConfig` — per-metric alert thresholds
+- `UserActivity` — audit trail
+- `Notification` — user notifications
 
 ## API Patterns
 
 - All routes under `/api/` prefix
-- JWT token in Authorization header: `Bearer <token>`
-- Role-based access: `admin`, `producer`, `consumer`
-- Use `require_roles("admin", "producer")` decorator for route protection
-- CSRF token in `X-CSRF-Token` header (for POST/PUT/DELETE/PATCH)
-- Correlation ID tracking via `X-Correlation-ID` header (auto-generated if not provided)
+- JWT in `Authorization: Bearer <token>`
+- Roles: `admin`, `producer`, `consumer`
+- `require_roles("admin", "producer")` decorator for protection
+- CSRF token in `X-CSRF-Token` header for POST/PUT/DELETE/PATCH
+- Correlation ID via `X-Correlation-ID` (auto-generated if absent)
 
 ### Key Endpoints
 
 **Authentication:**
 ```
-POST /api/auth/login              # Login (5/minute rate limit)
-POST /api/auth/register           # Register new user (3/minute)
-POST /api/auth/refresh            # Refresh JWT token
-POST /api/auth/logout             # Logout (blacklist token)
+POST /api/auth/login              # Login (5/min rate limit)
+POST /api/auth/register           # Register (3/min)
+POST /api/auth/refresh            # Refresh JWT
+POST /api/auth/logout             # Blacklist token
 GET  /api/csrf-token              # Get CSRF token
 ```
 
 **Trips:**
 ```
-GET  /api/trips                   # List trips with filters
-POST /api/trips/manual            # Create manual trip (admin)
-PUT  /api/trips/{trip_id}/status  # Update trip status
-GET  /api/trips/active            # Active trips (status 0-8)
-GET  /api/trips/history           # Completed trips with pagination
+GET  /api/trips                   # List with filters
+POST /api/trips/manual            # Manual create (admin)
+PUT  /api/trips/{trip_id}/status  # Update status
+GET  /api/trips/active            # Active trips (status 0-12)
+GET  /api/trips/history           # Completed with pagination
 ```
 
-**Planning:**
+**Planning (in `plans.py`):**
 ```
-GET  /api/daily-plans/{date}      # Get plans for date
-POST /api/daily-plans             # Upsert daily plan
-GET  /api/monthly-plans/{year}/{month}  # Monthly plans
-POST /api/distributions/optimize  # Optimize distribution
+GET  /api/daily-plans/{date}
+POST /api/daily-plans
+GET  /api/monthly-plans/{year}/{month}
+POST /api/distributions/optimize  # PuLP linear programming
 ```
 
 **Configuration:**
 ```
-POST /api/config/hm-matrix        # Update HM Matrix times
-GET  /api/config/system-settings  # System timing configuration
-POST /api/config/system-settings/bulk  # Update system settings (admin, 3/minute)
+POST /api/config/hm-matrix
+GET  /api/config/system-settings
+POST /api/config/system-settings/bulk  # admin, 3/min
 ```
 
 **Monitoring:**
 ```
-GET  /api/live-ops/trips          # Live operations with deviations
-GET  /api/activity-logs           # Audit trail with pagination
-GET  /health                      # Health check
+GET  /api/live-ops/trips
+GET  /api/activity-logs
+GET  /health
 ```
 
 **Weighbridges:**
 ```
-GET  /api/weighbridges              # List weighbridges
-POST /api/weighbridges              # Create weighbridge (admin)
-PUT  /api/weighbridges/{id}         # Update weighbridge (admin)
-PUT  /api/weighbridges/{id}/status  # Change status (admin)
-GET  /api/weighbridge-records/{trip_id}  # Records for a trip
-POST /api/weighbridge-records       # Manual record entry
+GET  /api/weighbridges
+POST /api/weighbridges              # admin
+PUT  /api/weighbridges/{id}         # admin
+PUT  /api/weighbridges/{id}/status  # admin
+GET  /api/weighbridge-records/{trip_id}
+POST /api/weighbridge-records
+```
+
+**Converters:**
+```
+GET  /api/converters                # List
+POST /api/converters                # admin
+PUT  /api/converters/{id}
+PUT  /api/converters/{id}/status
 ```
 
 ### Error Response Format
-
-All API errors follow a structured format:
 
 ```json
 {
@@ -397,34 +368,27 @@ All API errors follow a structured format:
   "error": "ValidationError",
   "error_code": "VAL_2001",
   "message": "Missing required field: producer_id",
-  "details": {
-    "field": "producer_id",
-    "requirement": "required"
-  },
+  "details": { "field": "producer_id", "requirement": "required" },
   "field_errors": [
-    {
-      "field": "producer_id",
-      "message": "This field is required",
-      "code": "required"
-    }
+    { "field": "producer_id", "message": "This field is required", "code": "required" }
   ],
   "request_id": "correlation-id-uuid"
 }
 ```
 
 **Error Code Categories:**
-- **1xxx**: Authentication (invalid credentials, token expired, account locked)
-- **2xxx**: Validation (required field, invalid format, out of range)
-- **3xxx**: Resource (not found, already exists, conflict)
-- **4xxx**: Trip-specific (invalid status transition, no available torpedo)
-- **5xxx**: Fleet (in maintenance, already assigned)
-- **6xxx**: Planning (date passed, capacity exceeded)
-- **7xxx**: Rate limiting (rate limit exceeded)
-- **9xxx**: Server errors (internal error, database error)
+- **1xxx** Authentication (invalid credentials, token expired, locked)
+- **2xxx** Validation (required, format, range)
+- **3xxx** Resource (not found, duplicate, conflict)
+- **4xxx** Trip-specific (invalid transition, no available torpedo)
+- **5xxx** Fleet (in maintenance, already assigned)
+- **6xxx** Planning (date passed, capacity exceeded)
+- **7xxx** Rate limit
+- **9xxx** Server (internal, database)
 
 **System Settings Keys:**
-- `TRAVEL_TO_PRODUCER_MINUTES` - Time from depot to producer after assignment
-- `EXIT_BUFFER_MINUTES` - Buffer after loading/unloading before exit
+- `TRAVEL_TO_PRODUCER_MINUTES` — depot→producer after assignment (default 15)
+- `EXIT_BUFFER_MINUTES` — buffer after load/unload before exit (default 5)
 - `DEFAULT_WAIT_TIME`, `DEFAULT_FILL_TIME`, `DEFAULT_UNLOAD_TIME`, `DEFAULT_TRAVEL_TIME`
 
 ## Database
@@ -432,147 +396,130 @@ All API errors follow a structured format:
 - PostgreSQL via `backend/.env`:
   - `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_NAME`
   - `SECRET_KEY` required for JWT
-- Models auto-create tables via `init_db()` on startup
-- **Alembic** for database migrations (see Database Migrations section above)
-- Migration files in `backend/alembic/versions/`
-- **Soft Delete**: User, Trip, and FleetManagement models support soft delete (deleted_at timestamp)
+- Models auto-create via `init_db()` on startup (dev); Alembic for production migrations
+- **Soft Delete**: `User`, `Trip`, `FleetManagement` carry `deleted_at` (via `SoftDeleteMixin`)
 
 ## Production Readiness
 
-The HMD system includes comprehensive production-grade features implemented across 6 sprints:
-
 ### Security Features
 
-**Account Lockout (Brute Force Protection):**
-- Failed login tracking with configurable thresholds
-- Default: 5 failed attempts → 15-minute lockout
-- Tracks attempts by username and IP address
-- Admin unlock capability via `unlock_account()`
-- Environment variables: `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION_MINUTES`
+**Account Lockout:**
+- 5 failed attempts → 15min lockout (configurable)
+- Tracks by username + IP
+- Admin unlock via `unlock_account()`
+- Env: `MAX_LOGIN_ATTEMPTS`, `LOCKOUT_DURATION_MINUTES`
 
-**Token Blacklist (Secure Logout):**
-- JWT tokens invalidated on logout (Redis-backed with SHA-256 hashing)
-- Automatic TTL cleanup (expires with token)
-- Force logout from all sessions: `clear_user_tokens(username)`
-- Integrated with `get_current_user_required` dependency
+**Token Blacklist:**
+- Redis-backed with SHA-256 hashing
+- Automatic TTL cleanup
+- Force logout all sessions: `clear_user_tokens(username)`
 
-**Rate Limiting (DoS Protection):**
-- Endpoint-specific rate limits using slowapi
+**Rate Limiting (slowapi):**
 - Tiers: auth (5/min), high (60/min), medium (20/min), low (10/min), export (5/min)
-- Configurable per-endpoint overrides
-- Test mode available: `RATE_LIMIT_ENABLED=false`
+- Test mode: `RATE_LIMIT_ENABLED=false`
 
-**CSRF Protection:**
+**CSRF:**
 - Double-submit cookie pattern
 - Token format: `random.timestamp.signature` (HMAC-SHA256)
-- Auto-refresh on each request
-- Exempt paths: login, register, health, documentation
-- Get token: `GET /api/csrf-token`
+- Exempt paths: login, register, health, docs
+- Endpoint: `GET /api/csrf-token`
 
 **Security Headers:**
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
 - `Strict-Transport-Security` (when HTTPS enabled)
-- `Content-Security-Policy` with comprehensive restrictions
-- `Permissions-Policy` for browser feature control
+- `Content-Security-Policy` + `Permissions-Policy`
 
 **HTTPS Enforcement:**
-- Automatic HTTP → HTTPS redirect (301)
-- Configurable via `ENFORCE_HTTPS` environment variable
-- Supports reverse proxy detection (`X-Forwarded-Proto`)
+- Auto HTTP→HTTPS redirect (301) when `ENFORCE_HTTPS=true`
+- Supports `X-Forwarded-Proto` for reverse proxy
 
 ### Observability
 
-**OpenTelemetry Distributed Tracing:**
-- FastAPI and SQLAlchemy auto-instrumentation
-- Correlation ID tracking across requests (`X-Correlation-ID` header)
-- OTLP gRPC exporter (Jaeger or any OTLP-compatible backend)
-- Configurable: `OTEL_ENABLED`, `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`
-- Manual span creation: `@trace_span("operation_name")` decorator
+**OpenTelemetry:**
+- FastAPI + SQLAlchemy auto-instrumentation
+- Correlation ID across requests
+- OTLP gRPC → Jaeger or any OTLP backend
+- Env: `OTEL_ENABLED`, `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`
+- Manual spans: `@trace_span("operation_name")`
 
-**Structured Error Responses:**
-- Categorized error codes: Auth (1xxx), Validation (2xxx), Resource (3xxx), Trip (4xxx), Fleet (5xxx), Planning (6xxx), Rate Limit (7xxx), Server (9xxx)
-- Field-level validation errors with Pydantic integration
-- Correlation ID in error responses for tracing
-- Exception classes: `HMDException`, `NotFoundError`, `ValidationError`, `TripStatusError`, etc.
+**Structured Errors:**
+- Exception classes: `HMDException`, `NotFoundError`, `ValidationError`, `TripStatusError`
+- Field-level validation errors (Pydantic integration)
+- Correlation ID in every error response
 
 ### Data Management
 
-**Soft Delete Implementation:**
-- Models: User, Trip, FleetManagement
-- Helper functions: `active_only(query)`, `soft_delete(db, record)`, `restore(db, record)`
-- Preserves data for audit and recovery
+**Soft Delete:**
+- Models: `User`, `Trip`, `FleetManagement`
+- Helpers: `active_only(query)`, `soft_delete(db, record)`, `restore(db, record)`
 - Query helpers: `get_active()`, `get_active_by_id()`
 
 **Trip Validation:**
-- Status transition validation (prevents invalid state changes)
-- Timestamp monotonicity checks (ensures chronological order)
+- Status transition rules (prevents invalid jumps)
+- Timestamp monotonicity
 - Stuck trip detection with configurable thresholds
-- Helper: `update_trip_status()` with comprehensive validation
+- Helper: `update_trip_status()`
 
 **Atomic Audit Logging:**
-- Transaction-safe logging with retry logic
-- Automatic change diff tracking: `log_entity_change()`
-- Context extraction: IP address, user agent
-- Atomic operations: `atomic_operation()` context manager with savepoint support
+- Transaction-safe with retry logic
+- Change diff via `log_entity_change()`
+- Context: IP, user agent
+- `atomic_operation()` context manager (savepoint support)
 
-### Caching Strategy
+### Caching
 
-**Redis Cache (Primary):**
-- Connection pooling (max 20 connections)
-- Automatic fallback to in-memory cache if Redis unavailable
-- TTL support with automatic expiration
-- Pattern-based invalidation: `delete_pattern("plans:*")`
-- Health check with latency metrics
-- Environment variables: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_PASSWORD`
+**Redis Cache (primary):**
+- Connection pool (max 20)
+- Auto fallback to in-memory if unavailable
+- TTL support
+- Pattern invalidation: `delete_pattern("plans:*")`
+- Env: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_PASSWORD`
 
-**In-Memory Cache (Fallback):**
-- ThreadSafeCache with RLock for thread safety
+**In-Memory Fallback:**
+- `ThreadSafeCache` (RLock)
 - Automatic expiration cleanup
 - Prefix-based pattern matching
-- Zero-config development mode
 
 **Cache Decorator:**
 ```python
 @cached(cache_key="plans:{date}", ttl=300)
-def get_daily_plan(date: str):
-    ...
+def get_daily_plan(date: str): ...
 ```
 
 ### Environment Configuration
 
-**Required Variables:**
-- `SECRET_KEY` - JWT signing key (minimum 32 characters, no default)
+**Required:**
+- `SECRET_KEY` — JWT signing key (min 32 chars, no default)
 - `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_NAME`
 
 **Security (optional with defaults):**
-- `ENFORCE_HTTPS` (default: false)
-- `CSRF_ENABLED` (default: true)
-- `RATE_LIMIT_ENABLED` (default: true)
-- `MAX_LOGIN_ATTEMPTS` (default: 5)
-- `LOCKOUT_DURATION_MINUTES` (default: 15)
-- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 480)
+- `ENFORCE_HTTPS` (false)
+- `CSRF_ENABLED` (true)
+- `RATE_LIMIT_ENABLED` (true)
+- `MAX_LOGIN_ATTEMPTS` (5)
+- `LOCKOUT_DURATION_MINUTES` (15)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` (480)
 
-**Observability (optional with defaults):**
-- `OTEL_ENABLED` (default: true)
-- `OTEL_SERVICE_NAME` (default: "hmd-backend")
-- `OTEL_EXPORTER_OTLP_ENDPOINT` (default: http://localhost:4317)
+**Observability (optional):**
+- `OTEL_ENABLED` (true)
+- `OTEL_SERVICE_NAME` (`hmd-backend`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (`http://localhost:4317`)
 
-**Infrastructure (optional with defaults):**
-- `CACHE_ENABLED` (default: true)
-- `REDIS_HOST` (default: localhost), `REDIS_PORT` (default: 6379)
-- `ALLOWED_ORIGINS` - CORS whitelist (comma-separated)
+**Infrastructure (optional):**
+- `CACHE_ENABLED` (true)
+- `REDIS_HOST` (localhost), `REDIS_PORT` (6379)
+- `ALLOWED_ORIGINS` — CORS whitelist (comma-separated)
 
 **Startup Validation:**
-- Environment variables validated via `env_validator.py` on app startup
-- Detailed error messages for missing/invalid configuration
+- Env vars validated inline on app startup (see `main.py` / `init_db.py`)
+- Detailed error messages for missing/invalid config
 - Safe summary logging (sensitive values masked)
 
 ## Frontend Patterns
 
 ### React Router URLs
-The frontend uses React Router for URL-based navigation with role-based route protection:
 
 | URL | Page | Sidebar | Access |
 |-----|------|---------|--------|
@@ -584,23 +531,23 @@ The frontend uses React Router for URL-based navigation with role-based route pr
 | `/trips` | Trip Management | Yes | All authenticated |
 | `/fleet` | Torpedo Management | Yes (Admin) | Admin only |
 | `/audit` | Audit Trail | Yes (Admin) | Admin only |
-| `/operations` | Node Operations | Yes (All) | All authenticated (Admin sees tabbed view of all nodes) |
+| `/operations` | Node Operations | Yes (All) | All (Admin sees tabbed view) |
 | `/reports` | Reports | Yes (Admin) | Admin only |
 | `/settings` | Settings | Yes | All authenticated |
 
-**Strategic Planning Tabs (Admin only):**
-- Executive View - Dashboard summary and node monitoring
-- Configuration - HM Matrix (travel times, fill/unload times)
-- Maintenance - Maintenance calendar scheduling
-- Strategic - Monthly calendar planning
-- Weighbridge - Weighbridge unit management (create, edit, status)
+**Strategic Planning Tabs (Admin):**
+- Executive View — dashboard summary + node monitoring
+- Configuration — HM Matrix
+- Maintenance — maintenance calendar
+- Strategic — monthly calendar planning
+- Weighbridge — weighbridge unit management
 
-**Note:** Configuration and Maintenance were moved from sidebar into Strategic Planning page tabs. The routes still exist but are accessed via the Strategic Planning tabs.
+Configuration and Maintenance were moved from the sidebar into Strategic Planning tabs. Routes still resolve, but primary entry is via tabs.
 
-**Navigation components:**
-- `Sidebar.jsx` - Uses `<Link>` from react-router-dom
-- `Header.jsx` - Uses `useNavigate()` for notification links
-- `App.jsx` - Exports `PAGE_ID_TO_PATH` mapping for backwards compatibility
+**Navigation:**
+- `Sidebar.jsx` — `<Link>` from react-router-dom
+- `Header.jsx` — `useNavigate()` for notification routing
+- `App.jsx` — exports `PAGE_ID_TO_PATH` for back-compat
 
 ### API Usage
 ```typescript
@@ -611,83 +558,73 @@ await api.post('/api/plans', { date: '2024-01-20', capacity: 100 });
 ```
 
 ### CSS Variables & Theming
-Uses CSS custom properties for theming. Key variables:
-- `var(--bg-primary)`, `var(--bg-secondary)` - Background colors
-- `var(--text-primary)`, `hsl(var(--text-muted))` - Text colors
-- `hsl(var(--border-color))`, `hsl(var(--primary))` - Border and accent colors
-- Dark mode: Apply via `:root[data-theme="dark"]` selectors
 
-**Dark Mode for Components with Charts:**
-```javascript
-import { useTheme } from '../context/ThemeContext'
-const { theme } = useTheme()
-const isDarkMode = theme === 'dark'
+Uses CSS custom properties. Key variables:
+- `var(--bg-primary)`, `var(--bg-secondary)` — backgrounds
+- `var(--text-primary)`, `hsl(var(--text-muted))` — text
+- `hsl(var(--border-color))`, `hsl(var(--primary))` — border/accent
 
-// For Recharts colors
-const chartColors = {
-    axisText: isDarkMode ? '#94a3b8' : '#64748b',
-    gridStroke: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
-}
-```
+**Dark mode is NOT supported** — `ThemeContext` was stripped. Don't reintroduce `useTheme()` / `data-theme="dark"` patterns without explicit scope expansion.
 
-**Avoid hardcoded colors** - use CSS variables for backgrounds:
-- Instead of `background: white` → use `background: var(--bg-secondary)`
-- Instead of `background: #f8fafc` → use `background: var(--bg-primary)`
+**Avoid hardcoded colors:**
+- `background: white` → `background: var(--bg-secondary)`
+- `background: #f8fafc` → `background: var(--bg-primary)`
 
-### Premium UI Styling Patterns
-- Card hover effects: `transform: translateY(-2px)` with box-shadow
+### UI Styling Patterns
+- Card hover: `transform: translateY(-2px)` + box-shadow
 - Accent bars: `::before` pseudo-element with gradient
-- Rounded corners: `border-radius: 8px-16px` for cards
-- Icons with colored backgrounds in summary cards
-- KPI cards with colored left border: `border-left: 3px solid ${color}`
-
-### Component Patterns
-- Summary cards: Icon + value + label with accent colors
-- Data tables: Sticky headers with solid background colors
-- Filter controls: Gradient backgrounds with focus ring effects
-- Modals: Backdrop blur with rounded corners
+- Rounded corners: `border-radius: 8px-16px`
+- KPI cards: colored left border (`border-left: 3px solid ${color}`)
+- Summary cards: icon + value + label with accent
+- Data tables: sticky headers, solid backgrounds
+- Filter controls: gradient bg with focus ring
+- Modals: backdrop blur, rounded corners
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Version_06** (9262 symbols, 16774 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+**Status:** Index was previously built for `Version_06`. Since this is a fresh repo at `Version_07` (see Repository State above), **the existing GitNexus index is stale**. Rebuild before relying on it:
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+```bash
+npx gitnexus analyze --embeddings   # preserve embeddings if previously generated
+```
+
+After rebuild, the resources below will refer to `Version_07`.
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- **MUST run impact analysis before editing any symbol.** Run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level).
+- **MUST run `gitnexus_detect_changes()` before committing** to verify changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact returns HIGH or CRITICAL risk before proceeding.
+- For unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping.
+- For full context on a symbol, use `gitnexus_context({name: "symbolName"})`.
 
 ## When Debugging
 
-1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
-2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/Version_06/process/{processName}` — trace the full execution flow step by step
-4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
+1. `gitnexus_query({query: "<error or symptom>"})` — find related execution flows
+2. `gitnexus_context({name: "<suspect function>"})` — see callers, callees, flow participation
+3. `READ gitnexus://repo/Version_07/process/{processName}` — trace full execution step by step
+4. Regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})`
 
 ## When Refactoring
 
-- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review the preview — graph edits are safe, text_search edits need manual review. Then run with `dry_run: false`.
-- **Extracting/Splitting**: MUST run `gitnexus_context({name: "target"})` to see all incoming/outgoing refs, then `gitnexus_impact({target: "target", direction: "upstream"})` to find all external callers before moving code.
-- After any refactor: run `gitnexus_detect_changes({scope: "all"})` to verify only expected files changed.
+- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review preview. Graph edits are safe; text_search edits need manual review. Then run with `dry_run: false`.
+- **Extracting/Splitting**: Run `gitnexus_context({name: "target"})` first to see refs; then `gitnexus_impact({target: "target", direction: "upstream"})` to find external callers.
+- After refactor: `gitnexus_detect_changes({scope: "all"})` to verify scope.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER edit a symbol without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings.
+- NEVER rename with find-and-replace — use `gitnexus_rename`.
+- NEVER commit without `gitnexus_detect_changes()`.
 
 ## Tools Quick Reference
 
 | Tool | When to use | Command |
 |------|-------------|---------|
 | `query` | Find code by concept | `gitnexus_query({query: "auth validation"})` |
-| `context` | 360-degree view of one symbol | `gitnexus_context({name: "validateUser"})` |
+| `context` | 360° view of one symbol | `gitnexus_context({name: "validateUser"})` |
 | `impact` | Blast radius before editing | `gitnexus_impact({target: "X", direction: "upstream"})` |
 | `detect_changes` | Pre-commit scope check | `gitnexus_detect_changes({scope: "staged"})` |
 | `rename` | Safe multi-file rename | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
@@ -697,54 +634,53 @@ This project is indexed by GitNexus as **Version_06** (9262 symbols, 16774 relat
 
 | Depth | Meaning | Action |
 |-------|---------|--------|
-| d=1 | WILL BREAK — direct callers/importers | MUST update these |
-| d=2 | LIKELY AFFECTED — indirect deps | Should test |
+| d=1 | WILL BREAK — direct callers | MUST update |
+| d=2 | LIKELY AFFECTED — indirect | Should test |
 | d=3 | MAY NEED TESTING — transitive | Test if critical path |
 
 ## Resources
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/Version_06/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/Version_06/clusters` | All functional areas |
-| `gitnexus://repo/Version_06/processes` | All execution flows |
-| `gitnexus://repo/Version_06/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/Version_07/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/Version_07/clusters` | Functional areas |
+| `gitnexus://repo/Version_07/processes` | All execution flows |
+| `gitnexus://repo/Version_07/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
-Before completing any code modification task, verify:
-1. `gitnexus_impact` was run for all modified symbols
-2. No HIGH/CRITICAL risk warnings were ignored
-3. `gitnexus_detect_changes()` confirms changes match expected scope
-4. All d=1 (WILL BREAK) dependents were updated
+1. `gitnexus_impact` run for all modified symbols
+2. No HIGH/CRITICAL risk warnings ignored
+3. `gitnexus_detect_changes()` confirms scope
+4. All d=1 dependents updated
 
 ## Keeping the Index Fresh
 
-After committing code changes, the GitNexus index becomes stale. Re-run analyze to update it:
+After commit, re-run analyze:
 
 ```bash
 npx gitnexus analyze
 ```
 
-If the index previously included embeddings, preserve them by adding `--embeddings`:
+Preserve embeddings (if previously generated):
 
 ```bash
 npx gitnexus analyze --embeddings
 ```
 
-To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.embeddings` field shows the count (0 means no embeddings). **Running analyze without `--embeddings` will delete any previously generated embeddings.**
+Check `.gitnexus/meta.json` — `stats.embeddings` shows count (0 = none). **Running analyze without `--embeddings` deletes previously generated embeddings.**
 
-> Claude Code users: A PostToolUse hook handles this automatically after `git commit` and `git merge`.
+> Claude Code: A PostToolUse hook runs this automatically after `git commit` / `git merge`.
 
-## CLI
+## CLI Skill Files
 
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| Task | Skill file |
+|------|-----------|
+| Understand architecture | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools / schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index / status / clean / wiki CLI | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
