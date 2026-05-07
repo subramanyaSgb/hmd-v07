@@ -48,12 +48,20 @@ WBATNGL_TABLES: List[Tuple[str, str]] = [
 ]
 
 # Capacity policy. observed = max NET_WEIGHT seen for a torpedo across all
-# tables. We add a 5% headroom (operating margin), then clamp into [300, 400]
-# so a noisy outlier or a non-torpedo row doesn't push capacity to absurd
-# values. Empty observation → leave capacity untouched.
-HEADROOM_PCT = 1.05
+# tables (after rejecting outliers — see SANE_NW_MIN/MAX below). The historical
+# max is itself a reasonable capacity signal — it's the largest cast the
+# torpedo has actually held — so we use it directly with a defensive clamp.
+# JSW Vijayanagar torpedoes routinely carry 425–485 MT NET; we cap at 600 MT
+# to admit the heaviest legitimate torpedoes without trusting clearly broken
+# rows like the 6747 MT outlier observed in BF3.WB_TRANS_DATA_ITRO.
+HEADROOM_PCT = 1.0   # no headroom: capacity = observed MAX (rounded)
 CAP_MIN_MT = 300.0
-CAP_MAX_MT = 400.0
+CAP_MAX_MT = 600.0
+
+# SQL-level outlier filter applied to NET_WEIGHT before MAX().
+# Rejects glitches like 6747 MT and tiny partial-load rows under 100 MT.
+SANE_NW_MIN = 100.0
+SANE_NW_MAX = 1000.0
 
 # Module-level guard so Oracle thick mode is only initialized once per
 # process (oracledb raises if init_oracle_client is called twice).
@@ -121,7 +129,7 @@ def normalize_ladleno(ladleno: Optional[str]) -> Optional[str]:
 
 
 def derive_capacity(observed_mt: float) -> float:
-    """observed × 1.05, clamped to [CAP_MIN_MT, CAP_MAX_MT]."""
+    """observed × HEADROOM_PCT, clamped to [CAP_MIN_MT, CAP_MAX_MT]."""
     if observed_mt is None or observed_mt <= 0:
         return CAP_MIN_MT
     return max(CAP_MIN_MT, min(CAP_MAX_MT, observed_mt * HEADROOM_PCT))
@@ -154,8 +162,11 @@ def fetch_max_net_weights() -> Dict[str, float]:
                 cur.execute(
                     f"SELECT LADLENO, MAX(NET_WEIGHT) "
                     f"FROM {qualified} "
-                    f"WHERE LADLENO IS NOT NULL AND NET_WEIGHT IS NOT NULL "
-                    f"GROUP BY LADLENO"
+                    f"WHERE LADLENO IS NOT NULL "
+                    f"  AND NET_WEIGHT IS NOT NULL "
+                    f"  AND NET_WEIGHT BETWEEN :nw_min AND :nw_max "
+                    f"GROUP BY LADLENO",
+                    nw_min=SANE_NW_MIN, nw_max=SANE_NW_MAX,
                 )
                 rows = cur.fetchall()
             except Exception as e:
