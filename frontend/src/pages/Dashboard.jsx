@@ -469,8 +469,8 @@ const Dashboard = () => {
                     className="overlay-glass-box"
                     style={{
                         position: 'absolute',
-                        top: '24px',
-                        right: '70px',
+                        bottom: '24px',
+                        left: '24px',
                         zIndex: 1000,
                         display: 'flex',
                         alignItems: 'center',
