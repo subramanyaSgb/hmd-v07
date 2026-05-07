@@ -17,6 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.exceptions import RequestValidationError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from .logger import logger
 from .database.init_db import init_db
 from .utils.errors import (
@@ -254,6 +255,46 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "An internal server error occurred. Please try again later."}
     )
 
+def schedule_suveechi_sync():
+    """Register interval job to pull SuVeechi GPS data into FleetLiveLocation."""
+    if os.getenv("SUVEECHI_SYNC_ENABLED", "false").lower() != "true":
+        logger.info("SuVeechi sync disabled (set SUVEECHI_SYNC_ENABLED=true to enable).")
+        return
+
+    try:
+        interval_sec = int(os.getenv("SUVEECHI_SYNC_INTERVAL_SECONDS", "10"))
+    except ValueError:
+        interval_sec = 10
+
+    import asyncio
+    from .utils.suveechi_sync import sync_once, prune_old_locations
+
+    async def _run_sync():
+        try:
+            await asyncio.to_thread(sync_once)
+        except Exception as e:
+            logger.exception(f"SuVeechi sync job error: {e}")
+
+    async def _run_prune():
+        try:
+            await asyncio.to_thread(prune_old_locations, 24)
+        except Exception as e:
+            logger.error(f"SuVeechi prune job error: {e}")
+
+    scheduler.add_job(
+        _run_sync, IntervalTrigger(seconds=interval_sec),
+        id="suveechi_sync", name="SuVeechi GPS Sync",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+    # Daily prune at 02:00 IST
+    scheduler.add_job(
+        _run_prune, CronTrigger(hour=2, minute=0),
+        id="suveechi_prune", name="SuVeechi Location Prune",
+        replace_existing=True,
+    )
+    logger.info(f"SuVeechi sync scheduled every {interval_sec}s; prune daily 02:00")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Running database initialization...")
@@ -265,6 +306,7 @@ async def startup_event():
     scheduler.start()
 
     schedule_daily_report()
+    schedule_suveechi_sync()
 
     logger.success("FastAPI server is running and database is initialized.")
 
