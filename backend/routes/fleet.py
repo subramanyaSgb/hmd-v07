@@ -32,10 +32,13 @@ async def get_live_fleet_locations(
 
     logger.debug("CACHE MISS: Fetching live fleet locations from DB.")
     try:
-        # Latest position per fleet_id
+        # Latest row per fleet_id, by row id (unique, monotonic) — NOT by last_updated.
+        # SuVeechi often reports the same `reporttime_ist` across many sync ticks for an
+        # idle torpedo, so multiple FleetLiveLocation rows can share the same fleet_id +
+        # last_updated. Joining on last_updated returns ALL of those duplicates (28k+
+        # rows after 90min for 53 torpedoes); joining on MAX(id) returns exactly one.
         latest_subquery = db.query(
-            FleetLiveLocation.fleet_id,
-            func.max(FleetLiveLocation.last_updated).label('max_updated')
+            func.max(FleetLiveLocation.id).label('max_id')
         ).group_by(FleetLiveLocation.fleet_id).subquery()
 
         # LEFT JOIN FleetManagement to expose status + capacity per torpedo
@@ -43,8 +46,7 @@ async def get_live_fleet_locations(
             db.query(FleetLiveLocation, FleetManagement)
             .join(
                 latest_subquery,
-                (FleetLiveLocation.fleet_id == latest_subquery.c.fleet_id) &
-                (FleetLiveLocation.last_updated == latest_subquery.c.max_updated)
+                FleetLiveLocation.id == latest_subquery.c.max_id
             )
             .outerjoin(
                 FleetManagement,

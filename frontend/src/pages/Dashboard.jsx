@@ -297,7 +297,25 @@ const Dashboard = () => {
             try {
                 const fleetData = await api.get('/api/fleet/live')
                 if (isMounted) {
-                    setFleetLocations(Array.isArray(fleetData) ? fleetData : [])
+                    // Defensive dedupe by fleet_id: keep the row with the newest
+                    // last_updated (or highest id as tiebreaker) — we should never
+                    // render two markers for the same torpedo.
+                    const arr = Array.isArray(fleetData) ? fleetData : []
+                    const byId = new Map()
+                    for (const row of arr) {
+                        if (!row || !row.fleet_id) continue
+                        const existing = byId.get(row.fleet_id)
+                        if (!existing) {
+                            byId.set(row.fleet_id, row)
+                            continue
+                        }
+                        const a = existing.last_updated || ''
+                        const b = row.last_updated || ''
+                        if (b > a || (b === a && (row.id || 0) > (existing.id || 0))) {
+                            byId.set(row.fleet_id, row)
+                        }
+                    }
+                    setFleetLocations(Array.from(byId.values()))
                     setIsOnline(true)
                 }
             } catch (err) {

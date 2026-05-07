@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 import pymysql
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database.engine import SessionLocal
@@ -142,16 +143,27 @@ def upsert_locations(db: Session, rows: List[Dict]) -> Dict[str, int]:
                     fleet.status = mapped_status
                     stats["fleet_updated"] += 1
 
-        # 2. FleetLiveLocation insert (append-only)
+        # 2. FleetLiveLocation insert (append-only, but skip dupes)
+        # SuVeechi keeps reporting the same `reporttime_ist` for idle torpedoes
+        # tick after tick. If we appended every time we'd accumulate hundreds of
+        # rows per torpedo all sharing one timestamp, which then explodes the
+        # /api/fleet/live response (the JOIN on last_updated matches them all).
+        # Only insert when this fleet_id's latest stored timestamp is older than
+        # the SuVeechi-reported one.
         if lat is not None and lon is not None:
-            db.add(FleetLiveLocation(
-                fleet_id=fleet_id,
-                type="torpedo",
-                x=float(lat),
-                y=float(lon),
-                last_updated=reported,
-            ))
-            stats["locations_inserted"] += 1
+            latest_for_fleet = db.query(
+                func.max(FleetLiveLocation.last_updated)
+            ).filter(FleetLiveLocation.fleet_id == fleet_id).scalar()
+
+            if latest_for_fleet is None or latest_for_fleet < reported:
+                db.add(FleetLiveLocation(
+                    fleet_id=fleet_id,
+                    type="torpedo",
+                    x=float(lat),
+                    y=float(lon),
+                    last_updated=reported,
+                ))
+                stats["locations_inserted"] += 1
 
     db.commit()
     return stats
