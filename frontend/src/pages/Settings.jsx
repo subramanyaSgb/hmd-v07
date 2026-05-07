@@ -49,6 +49,10 @@ const Settings = () => {
 
     const [defaultZoom, setDefaultZoom] = useState(parseInt(localStorage.getItem('hmd_map_zoom')) || 13)
     const [defaultStyle, setDefaultStyle] = useState(localStorage.getItem('hmd_map_style') || 'road')
+    const [showTorpedoLegend, setShowTorpedoLegend] = useState(
+        // default ON unless user explicitly disabled it
+        localStorage.getItem('hmd_show_torpedo_legend') !== 'false'
+    )
     const [editingId, setEditingId] = useState(null)
     const [editingUserId, setEditingUserId] = useState(null)
     const [systemStats, setSystemStats] = useState({
@@ -1876,6 +1880,47 @@ const Settings = () => {
                                                 </button>
                                             );
                                         })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="settings-label">Torpedo Status Legend</label>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '16px',
+                                        background: 'linear-gradient(145deg, hsl(var(--main-bg)) 0%, hsl(var(--bg-secondary) / 0.3) 100%)',
+                                        padding: '14px 16px',
+                                        borderRadius: '14px',
+                                        border: '1px solid hsl(var(--border-color) / 0.5)',
+                                    }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'hsl(var(--text-primary))' }}>
+                                                Show torpedo legend on map
+                                            </div>
+                                            <div style={{ fontWeight: 500, fontSize: '0.75rem', color: 'hsl(var(--text-muted))', marginTop: '2px' }}>
+                                                Total + breakdown (Idle / Moving / Assigned / Maintenance)
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="settings-toggle"
+                                            onClick={() => {
+                                                const next = !showTorpedoLegend;
+                                                setShowTorpedoLegend(next);
+                                                localStorage.setItem('hmd_show_torpedo_legend', String(next));
+                                                window.dispatchEvent(new CustomEvent('hmd:settings-changed', { detail: { key: 'hmd_show_torpedo_legend', value: next } }));
+                                            }}
+                                            style={{
+                                                background: showTorpedoLegend
+                                                    ? 'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%)'
+                                                    : 'hsl(var(--border-color))',
+                                            }}
+                                            aria-pressed={showTorpedoLegend}
+                                            aria-label="Toggle torpedo legend on map"
+                                        >
+                                            <div className="settings-toggle-knob" style={{ left: showTorpedoLegend ? '26px' : '2px' }} />
+                                        </button>
                                     </div>
                                 </div>
                             </div>

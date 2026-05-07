@@ -258,8 +258,23 @@ const Dashboard = () => {
     const [hasFittedFleet, setHasFittedFleet] = useState(false)
     const [selectedFleetId, setSelectedFleetId] = useState(null)
     const [mapStyle] = useState(localStorage.getItem('hmd_map_style') || 'road')
+    const [showTorpedoLegend, setShowTorpedoLegend] = useState(
+        localStorage.getItem('hmd_show_torpedo_legend') !== 'false'
+    )
 
     const zoom = useMemo(() => parseInt(localStorage.getItem('hmd_map_zoom')) || 13, [])
+
+    // React to live changes from Settings (so user sees the toggle effect immediately
+    // without a page refresh). Settings page dispatches hmd:settings-changed.
+    useEffect(() => {
+        const onChange = (e) => {
+            if (e?.detail?.key === 'hmd_show_torpedo_legend') {
+                setShowTorpedoLegend(Boolean(e.detail.value))
+            }
+        }
+        window.addEventListener('hmd:settings-changed', onChange)
+        return () => window.removeEventListener('hmd:settings-changed', onChange)
+    }, [])
 
     useEffect(() => {
         let isMounted = true
@@ -356,6 +371,28 @@ const Dashboard = () => {
         return locations.filter(loc => loc.is_visible)
     }, [locations])
 
+    // Bucket torpedoes for the legend. Maps SuVeechi vocab (Idle/Moving/Ign Off)
+    // and HMD vocab (Operating/Assigned/Maintenance) to a single set of buckets.
+    const torpedoBuckets = useMemo(() => {
+        const buckets = {
+            total: fleetLocations.length,
+            idle: 0,      // Idle, Operating
+            moving: 0,    // Moving
+            assigned: 0,  // Assigned (in active trip)
+            maintenance: 0, // Maintenance, Ign Off
+            unknown: 0,
+        }
+        for (const f of fleetLocations) {
+            const s = f?.status
+            if (s === 'Moving') buckets.moving += 1
+            else if (s === 'Assigned') buckets.assigned += 1
+            else if (s === 'Maintenance' || s === 'Ign Off') buckets.maintenance += 1
+            else if (s === 'Operating' || s === 'Idle') buckets.idle += 1
+            else buckets.unknown += 1
+        }
+        return buckets
+    }, [fleetLocations])
+
     if (loading) {
         return (
             <div className="premium-page-container dashboard-wrapper">
@@ -375,6 +412,32 @@ const Dashboard = () => {
             </div>
         )
     }
+
+    const legendChip = (label, value, color) => (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '2px',
+            padding: '0 10px',
+            borderLeft: `3px solid ${color}`,
+        }}>
+            <span style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: 'hsl(var(--text-muted))',
+            }}>{label}</span>
+            <span style={{
+                fontSize: '1.05rem',
+                fontWeight: 800,
+                color: color,
+                lineHeight: 1.05,
+                fontFamily: 'Space Grotesk, sans-serif',
+            }}>{value}</span>
+        </div>
+    )
 
     return (
         <div className="dashboard-wrapper">
@@ -400,6 +463,50 @@ const Dashboard = () => {
                     </div>
                 </div>
             </div>
+
+            {showTorpedoLegend && (
+                <div
+                    className="overlay-glass-box"
+                    style={{
+                        position: 'absolute',
+                        top: '24px',
+                        right: '70px',
+                        zIndex: 1000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        pointerEvents: 'auto',
+                        padding: '10px 8px 10px 14px',
+                    }}
+                    aria-label="Torpedo status legend"
+                >
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: '2px',
+                        padding: '0 14px 0 0',
+                        borderRight: '1px solid hsl(var(--border-color))',
+                        marginRight: '4px',
+                    }}>
+                        <span style={{
+                            fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em',
+                            textTransform: 'uppercase', color: 'hsl(var(--text-muted))',
+                        }}>Total</span>
+                        <span style={{
+                            fontSize: '1.25rem', fontWeight: 800,
+                            color: 'hsl(var(--primary))', lineHeight: 1.05,
+                            fontFamily: 'Space Grotesk, sans-serif',
+                        }}>{torpedoBuckets.total}</span>
+                    </div>
+                    {legendChip('Idle', torpedoBuckets.idle, statusColor('Operating'))}
+                    {legendChip('Moving', torpedoBuckets.moving, statusColor('Moving'))}
+                    {legendChip('Trip', torpedoBuckets.assigned, statusColor('Assigned'))}
+                    {legendChip('Maint', torpedoBuckets.maintenance, statusColor('Maintenance'))}
+                    {torpedoBuckets.unknown > 0 &&
+                        legendChip('?', torpedoBuckets.unknown, '#94a3b8')}
+                </div>
+            )}
 
             <div className="dashboard-map-container">
                 <MapContainer center={getMapCenter()} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
