@@ -59,9 +59,14 @@ CAP_MIN_MT = 300.0
 CAP_MAX_MT = 600.0
 
 # SQL-level outlier filter applied to NET_WEIGHT before MAX().
-# Rejects glitches like 6747 MT and tiny partial-load rows under 100 MT.
+# Range chosen empirically from the SMS4 first-run data:
+#   • highest legitimate observation across the JSW fleet: TLC-33 at 483.4 MT
+#   • cutoff at 550 MT gives ~67 MT margin over the genuine maximum, while
+#     dropping suspicious values like TLC-43's 665.6 MT and TLC-19's 6747 MT.
+#   • lower bound 100 MT drops empty / partial-load rows that would skew MAX
+#     downward in the unlikely case a torpedo's only data is partials.
 SANE_NW_MIN = 100.0
-SANE_NW_MAX = 1000.0
+SANE_NW_MAX = 550.0
 
 # Module-level guard so Oracle thick mode is only initialized once per
 # process (oracledb raises if init_oracle_client is called twice).
