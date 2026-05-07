@@ -6,6 +6,8 @@ import L from 'leaflet'
 import producerIcon from '../assets/producer_icon.png'
 import consumerIcon from '../assets/consumer.png'
 import wbridgeIcon from '../assets/wbridge.jpg'
+import { statusColor, statusShort } from '../utils/torpedoStatus'
+import TorpedoDrawer from '../components/TorpedoDrawer'
 
 const shortenName = (name) => {
     if (!name) return "";
@@ -80,37 +82,39 @@ const createMarkerIcon = (name, status, type) => {
     });
 }
 
-const createFleetIcon = (id) => {
+const createFleetIcon = (id, status) => {
+    const color = statusColor(status);
+    const shortStatus = statusShort(status);
     return L.divIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: center;">
                 <div style="
-                    background: hsl(var(--primary));
-                    min-width: 44px;
+                    background: ${color};
+                    min-width: 60px;
                     text-align: center;
-                    padding: 2px 4px;
+                    padding: 2px 6px;
                     border-radius: 4px;
                     font-weight: 900;
                     font-size: 10px;
                     color: white;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-                    border: 1.5px solid hsl(var(--accent));
+                    box-shadow: 0 4px 8px ${color}80;
+                    border: 1.5px solid white;
                     margin-bottom: 2px;
                     white-space: nowrap;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     letter-spacing: 0.01em;
-                ">${id}</div>
+                ">${id} · ${shortStatus}</div>
                 <div style="
                     font-size: 30px;
-                    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+                    filter: drop-shadow(0 4px 8px ${color}cc);
                     line-height: 1;
                 ">🚂</div>
             </div>`,
         className: 'custom-fleet-marker',
-        iconSize: [46, 50],
-        iconAnchor: [23, 45],
+        iconSize: [70, 50],
+        iconAnchor: [35, 45],
         popupAnchor: [0, -40]
     });
 }
@@ -177,6 +181,27 @@ const ChangeView = ({ center, hasCentered, onCentered }) => {
     return null
 }
 
+// Fit map bounds to all torpedoes once on first non-empty load.
+const FitBoundsOnFleet = ({ fleetLocations, hasFitted, onFitted }) => {
+    const map = useMap()
+    useEffect(() => {
+        if (hasFitted) return
+        if (!Array.isArray(fleetLocations) || fleetLocations.length === 0) return
+        const points = fleetLocations
+            .filter(f => typeof f.x === 'number' && typeof f.y === 'number')
+            .map(f => [f.x, f.y])
+        if (points.length === 0) return
+        try {
+            const bounds = L.latLngBounds(points)
+            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 })
+            onFitted()
+        } catch (err) {
+            console.warn('fitBounds failed:', err)
+        }
+    }, [fleetLocations, hasFitted, map, onFitted])
+    return null
+}
+
 const DEFAULT_MAP_CENTER = (() => {
     const envCenter = import.meta.env.VITE_MAP_CENTER;
     if (envCenter) {
@@ -193,6 +218,8 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true)
     const [isOnline, setIsOnline] = useState(false)
     const [hasCentered, setHasCentered] = useState(false)
+    const [hasFittedFleet, setHasFittedFleet] = useState(false)
+    const [selectedFleetId, setSelectedFleetId] = useState(null)
     const [mapStyle] = useState(localStorage.getItem('hmd_map_style') || 'road')
     const [currentTime, setCurrentTime] = useState(new Date())
     const [planningSummary, setPlanningSummary] = useState({
@@ -350,6 +377,11 @@ const Dashboard = () => {
                 <MapContainer center={getMapCenter()} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
                     <ZoomControl position="topright" />
                     <ChangeView center={getMapCenter()} hasCentered={hasCentered} onCentered={handleCentered} />
+                    <FitBoundsOnFleet
+                        fleetLocations={fleetLocations}
+                        hasFitted={hasFittedFleet}
+                        onFitted={() => setHasFittedFleet(true)}
+                    />
 
                     {mapStyle === 'road' ? (
                         <TileLayer
@@ -418,28 +450,14 @@ const Dashboard = () => {
                     ))}
 
                     {isOnline && fleetLocations.map(fleet => (
-                        <Marker key={`fleet-${fleet.fleet_id}`} position={[fleet.x, fleet.y]} icon={createFleetIcon(fleet.fleet_id)}>
-                            <Popup>
-                                <div style={{
-                                    fontWeight: 800,
-                                    fontSize: '0.9rem',
-                                    marginBottom: '4px',
-                                    color: 'hsl(var(--primary))'
-                                }}>
-                                    TORPEDO: {fleet.fleet_id}
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    color: 'hsl(var(--accent))',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 700
-                                }}>
-                                    LIVE TRACKING ACTIVE
-                                </div>
-                            </Popup>
-                        </Marker>
+                        <Marker
+                            key={`fleet-${fleet.fleet_id}`}
+                            position={[fleet.x, fleet.y]}
+                            icon={createFleetIcon(fleet.fleet_id, fleet.status)}
+                            eventHandlers={{
+                                click: () => setSelectedFleetId(fleet.fleet_id)
+                            }}
+                        />
                     ))}
 
                     {weighbridges.filter(wb => wb.x && wb.y && wb.is_active).map(wb => (
@@ -513,6 +531,11 @@ const Dashboard = () => {
                     </div>
                 )}
             </div>
+
+            <TorpedoDrawer
+                fleetId={selectedFleetId}
+                onClose={() => setSelectedFleetId(null)}
+            />
         </div>
     );
 }

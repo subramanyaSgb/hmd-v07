@@ -32,21 +32,39 @@ async def get_live_fleet_locations(
 
     logger.debug("CACHE MISS: Fetching live fleet locations from DB.")
     try:
-                                                                
+        # Latest position per fleet_id
         latest_subquery = db.query(
             FleetLiveLocation.fleet_id,
             func.max(FleetLiveLocation.last_updated).label('max_updated')
         ).group_by(FleetLiveLocation.fleet_id).subquery()
 
-        result = db.query(FleetLiveLocation).join(
-            latest_subquery,
-            (FleetLiveLocation.fleet_id == latest_subquery.c.fleet_id) &
-            (FleetLiveLocation.last_updated == latest_subquery.c.max_updated)
-        ).all()
+        # LEFT JOIN FleetManagement to expose status + capacity per torpedo
+        result = (
+            db.query(FleetLiveLocation, FleetManagement)
+            .join(
+                latest_subquery,
+                (FleetLiveLocation.fleet_id == latest_subquery.c.fleet_id) &
+                (FleetLiveLocation.last_updated == latest_subquery.c.max_updated)
+            )
+            .outerjoin(
+                FleetManagement,
+                FleetManagement.fleet_id == FleetLiveLocation.fleet_id
+            )
+            .all()
+        )
 
         fleet_data = [
-            {'id': loc.id, 'fleet_id': loc.fleet_id, 'type': loc.type, 'x': loc.x, 'y': loc.y, 'last_updated': loc.last_updated}
-            for loc in result
+            {
+                'id': loc.id,
+                'fleet_id': loc.fleet_id,
+                'type': loc.type,
+                'x': loc.x,
+                'y': loc.y,
+                'last_updated': loc.last_updated.isoformat() if loc.last_updated else None,
+                'status': fleet.status if fleet else None,
+                'capacity': fleet.capacity if fleet else None,
+            }
+            for loc, fleet in result
         ]
 
         fleet_cache.set(CACHE_KEY_LIVE_FLEET, fleet_data, CACHE_TTL_LIVE_FLEET)
