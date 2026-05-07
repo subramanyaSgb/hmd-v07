@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useMap, MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet'
 import { api } from '../utils/api'
 import 'leaflet/dist/leaflet.css'
@@ -82,10 +82,18 @@ const createMarkerIcon = (name, status, type) => {
     });
 }
 
+// Cache divIcon instances by (id, status). Bounded by ~fleet_count × status_count
+// (~53 × 5 = 265 entries max). Critical: returning the SAME L.divIcon reference
+// for the same (id, status) means react-leaflet's icon-prop effect short-circuits
+// and we avoid replacing 53 marker DOM nodes on every Dashboard render.
+const _fleetIconCache = new Map();
 const createFleetIcon = (id, status) => {
+    const cacheKey = `${id}|${status || ''}`;
+    const cached = _fleetIconCache.get(cacheKey);
+    if (cached) return cached;
     const color = statusColor(status);
     const shortStatus = statusShort(status);
-    return L.divIcon({
+    const icon = L.divIcon({
         html: `
             <div style="display: flex; flex-direction: column; align-items: center;">
                 <div style="
@@ -117,6 +125,8 @@ const createFleetIcon = (id, status) => {
         iconAnchor: [35, 45],
         popupAnchor: [0, -40]
     });
+    _fleetIconCache.set(cacheKey, icon);
+    return icon;
 }
 
 const createWeighbridgeIcon = (name, status) => {
@@ -160,6 +170,33 @@ const createWeighbridgeIcon = (name, status) => {
         popupAnchor: [0, -35]
     });
 }
+
+// Memoized torpedo marker — keeps the icon + position references stable when a
+// torpedo's data hasn't changed across polls, so react-leaflet skips setIcon /
+// setLatLng (each of which replaces / re-transforms DOM). Without this memo,
+// 53 torpedoes × every Dashboard render = 53 marker DOM rebuilds, which blew
+// past the main-thread budget once SuVeechi started feeding 53 live fleets.
+const FleetMarker = memo(
+    ({ fleet, onClick }) => {
+        const icon = useMemo(
+            () => createFleetIcon(fleet.fleet_id, fleet.status),
+            [fleet.fleet_id, fleet.status]
+        )
+        const position = useMemo(() => [fleet.x, fleet.y], [fleet.x, fleet.y])
+        const handleClick = useCallback(
+            () => onClick(fleet.fleet_id),
+            [onClick, fleet.fleet_id]
+        )
+        const eventHandlers = useMemo(() => ({ click: handleClick }), [handleClick])
+        return <Marker position={position} icon={icon} eventHandlers={eventHandlers} />
+    },
+    (prev, next) =>
+        prev.onClick === next.onClick &&
+        prev.fleet.fleet_id === next.fleet.fleet_id &&
+        prev.fleet.x === next.fleet.x &&
+        prev.fleet.y === next.fleet.y &&
+        prev.fleet.status === next.fleet.status
+)
 
 const ChangeView = ({ center, hasCentered, onCentered }) => {
     const map = useMap()
@@ -221,20 +258,8 @@ const Dashboard = () => {
     const [hasFittedFleet, setHasFittedFleet] = useState(false)
     const [selectedFleetId, setSelectedFleetId] = useState(null)
     const [mapStyle] = useState(localStorage.getItem('hmd_map_style') || 'road')
-    const [currentTime, setCurrentTime] = useState(new Date())
-    const [planningSummary, setPlanningSummary] = useState({
-        summary: { total_production: 0, total_consumption: 0, net: 0 },
-        individual: [],
-        assignments: []
-    })
-    const [error, setError] = useState(null)
 
     const zoom = useMemo(() => parseInt(localStorage.getItem('hmd_map_zoom')) || 13, [])
-
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-        return () => clearInterval(timer)
-    }, [])
 
     useEffect(() => {
         let isMounted = true
@@ -244,28 +269,20 @@ const Dashboard = () => {
             if (!isMounted) return
 
             try {
-                const [locationsData, planData, wbData] = await Promise.all([
+                const [locationsData, wbData] = await Promise.all([
                     api.get('/api/locations'),
-                    api.get('/api/daily-plans/dashboard-summary'),
                     api.get('/api/weighbridges').catch(() => ({ success: true, data: [] }))
                 ])
 
                 if (isMounted) {
                     setLocations(Array.isArray(locationsData) ? locationsData : [])
                     setWeighbridges(wbData?.data || [])
-                    setPlanningSummary(planData || {
-                        summary: { total_production: 0, total_consumption: 0, net: 0 },
-                        individual: [],
-                        assignments: []
-                    })
                     setIsOnline(true)
-                    setError(null)
                 }
             } catch (err) {
                 console.error("Dashboard initial fetch error:", err)
                 if (isMounted) {
                     setIsOnline(false)
-                    setError(err.message)
                 }
             } finally {
                 if (isMounted) {
@@ -278,20 +295,10 @@ const Dashboard = () => {
             if (!isMounted) return
 
             try {
-                const [fleetData, planData] = await Promise.all([
-                    api.get('/api/fleet/live'),
-                    api.get('/api/daily-plans/dashboard-summary')
-                ])
-
+                const fleetData = await api.get('/api/fleet/live')
                 if (isMounted) {
                     setFleetLocations(Array.isArray(fleetData) ? fleetData : [])
-                    setPlanningSummary(planData || {
-                        summary: { total_production: 0, total_consumption: 0, net: 0 },
-                        individual: [],
-                        assignments: []
-                    })
                     setIsOnline(true)
-                    setError(null)
                 }
             } catch (err) {
                 console.error("Dashboard poll error:", err)
@@ -312,6 +319,9 @@ const Dashboard = () => {
             }
         }
     }, [])
+
+    const handleFleetClick = useCallback(fleetId => setSelectedFleetId(fleetId), [])
+    const handleDrawerClose = useCallback(() => setSelectedFleetId(null), [])
 
     const getMapCenter = useCallback(() => {
         if (locations.length > 0 && locations[0].x && locations[0].y) {
@@ -450,13 +460,10 @@ const Dashboard = () => {
                     ))}
 
                     {isOnline && fleetLocations.map(fleet => (
-                        <Marker
+                        <FleetMarker
                             key={`fleet-${fleet.fleet_id}`}
-                            position={[fleet.x, fleet.y]}
-                            icon={createFleetIcon(fleet.fleet_id, fleet.status)}
-                            eventHandlers={{
-                                click: () => setSelectedFleetId(fleet.fleet_id)
-                            }}
+                            fleet={fleet}
+                            onClick={handleFleetClick}
                         />
                     ))}
 
@@ -534,7 +541,7 @@ const Dashboard = () => {
 
             <TorpedoDrawer
                 fleetId={selectedFleetId}
-                onClose={() => setSelectedFleetId(null)}
+                onClose={handleDrawerClose}
             />
         </div>
     );

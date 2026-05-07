@@ -250,8 +250,7 @@ export default function TorpedoDrawer({ fleetId, onClose }) {
                                     <div style={styles.v}>{currentTrip.status_name || STATUS_NAMES[currentTrip.status] || '—'}</div>
                                     <div style={styles.k}>Elapsed</div>
                                     <div style={styles.v}>
-                                        {/* tick state forces this to recompute every second */}
-                                        {tick >= 0 && formatMinutes(elapsedMinutes(currentTrip.assigned_at))}
+                                        {formatMinutes(elapsedMinutes(currentTrip.assigned_at))}
                                     </div>
                                 </div>
                                 <button
