@@ -398,3 +398,33 @@ async def get_fleet_statistics(
         "total_capacity": total_capacity,
         "assigned_torpedo_ids": list(assigned_torpedo_ids)
     }
+
+
+@router.post("/api/fleet-management/sync-capacities")
+async def sync_capacities_now(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_roles("admin", "trs"))
+):
+    """
+    Manual trigger for the WBATNGL capacity backfill (the same job that
+    APScheduler runs nightly at 03:00 IST). Admin/TRS only.
+
+    Returns the per-batch stats from `run_once`. Cache for /api/fleet-management
+    and /api/fleet/live is invalidated so the next read picks up new capacities.
+    """
+    import asyncio
+    from ..utils.wbatngl_capacity_sync import run_once as wbatngl_run_once
+
+    logger.info(f"WBATNGL manual capacity sync requested by {admin_user.username}")
+    # Off-thread to avoid blocking the event loop on the Oracle round-trip.
+    stats = await asyncio.to_thread(wbatngl_run_once)
+    fleet_cache.invalidate(CACHE_KEY_FLEET_MGMT)
+    fleet_cache.invalidate(CACHE_KEY_LIVE_FLEET)
+    log_activity(
+        db, admin_user.username, "FLEET_CAPACITY_SYNC",
+        details=f"Triggered WBATNGL capacity sync: {stats}",
+        current_user=admin_user,
+        entity_type="fleet",
+        entity_id="*",
+    )
+    return {"success": True, **(stats or {})}

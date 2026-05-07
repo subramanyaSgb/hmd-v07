@@ -295,6 +295,31 @@ def schedule_suveechi_sync():
     logger.info(f"SuVeechi sync scheduled every {interval_sec}s; prune daily 02:00")
 
 
+def schedule_wbatngl_capacity_sync():
+    """Register cron job that backfills FleetManagement.capacity from WBATNGL."""
+    if os.getenv("WBATNGL_SYNC_ENABLED", "false").lower() != "true":
+        logger.info("WBATNGL capacity sync disabled (set WBATNGL_SYNC_ENABLED=true to enable).")
+        return
+
+    import asyncio
+    from .utils.wbatngl_capacity_sync import run_once as wbatngl_run_once
+
+    async def _run_capacity_sync():
+        try:
+            await asyncio.to_thread(wbatngl_run_once)
+        except Exception as e:
+            logger.exception(f"WBATNGL capacity sync job error: {e}")
+
+    # Daily 03:00 IST — runs after the 02:00 SuVeechi prune so the local DB
+    # has its day's-end shape before we touch FleetManagement.capacity.
+    scheduler.add_job(
+        _run_capacity_sync, CronTrigger(hour=3, minute=0),
+        id="wbatngl_capacity_sync", name="WBATNGL Capacity Backfill",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+    logger.info("WBATNGL capacity sync scheduled daily at 03:00 IST")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Running database initialization...")
@@ -307,6 +332,7 @@ async def startup_event():
 
     schedule_daily_report()
     schedule_suveechi_sync()
+    schedule_wbatngl_capacity_sync()
 
     logger.success("FastAPI server is running and database is initialized.")
 

@@ -29,6 +29,9 @@ redis>=5.0.0
 # SuVeechi MySQL GPS sync
 pymysql>=1.1.0
 
+# WBATNGL Oracle capacity backfill (thick mode requires Oracle Instant Client)
+oracledb>=2.0.0
+
 # Cryptography (JWT tokens)
 cryptography>=42.0.0
 
