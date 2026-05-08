@@ -10,11 +10,10 @@ Env vars (read at runtime):
     WBATNGL_HOST/PORT/USER/PASSWORD/SERVICE   shared with capacity sync
     ORACLE_INSTANT_CLIENT_DIR
 """
-import logging
 from datetime import datetime
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from ..logger import logger
 
 
 _DATE_FORMATS = [
@@ -45,7 +44,7 @@ def normalize_ladleno(raw: Optional[str]) -> Optional[str]:
     return f"TLC-{int(digits):02d}"
 
 
-def parse_wbatngl_date(raw):
+def parse_wbatngl_date(raw: Optional[str | datetime]) -> Optional[datetime]:
     """
     Parse a WBATNGL date that might already be a datetime, or a VARCHAR2
     in one of the formats JSW uses. Returns None for empty/garbage input
@@ -63,5 +62,5 @@ def parse_wbatngl_date(raw):
             return datetime.strptime(s, fmt)
         except ValueError:
             continue
-    logger.debug(f"parse_wbatngl_date: unparseable value {s!r}")
+    logger.warning(f"parse_wbatngl_date: unparseable value {s!r}")
     return None
