@@ -17,10 +17,13 @@ Env vars:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
-import pymysql
+# pymysql is imported lazily inside fetch_suveechi_rows() so the rest of this
+# module (helpers + upsert logic) can be unit-tested in environments that
+# don't have pymysql installed (e.g., the dev laptop — only the SMS4 PC has
+# DB access). See backend/tests/test_suveechi_sync.py.
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -77,6 +80,7 @@ def map_status(suveechi_status: Optional[str]) -> str:
 
 def fetch_suveechi_rows() -> List[Dict]:
     """Open MySQL conn, fetch all rows from view, return list of dicts."""
+    import pymysql  # lazy — only the SMS4 PC has pymysql + MySQL access
     cfg = _config()
     if not cfg["password"]:
         raise RuntimeError("SUVEECHI_PASSWORD not set in environment")
@@ -100,6 +104,29 @@ def fetch_suveechi_rows() -> List[Dict]:
 
 # ── Sync logic ───────────────────────────────────────────────────
 
+def _to_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalize a datetime to timezone-aware UTC.
+
+    SuVeechi MySQL sometimes returns NULL for both reporttime fields, in which
+    case callers fall back to datetime.utcnow() — which is naive. Meanwhile
+    FleetLiveLocation.last_updated is TIMESTAMPTZ so PG always reads back
+    aware-UTC. Comparing the two raises
+    `TypeError: can't compare offset-naive and offset-aware datetimes`,
+    which silently kills the GPS sync (observed 2026-05-08 on SMS4 — every
+    torpedo stuck on yesterday's position).
+
+    Convention: any naive datetime that lands here is treated as UTC. This
+    matches PG's behaviour when storing a naive value into TIMESTAMPTZ
+    without a configured server timezone.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def upsert_locations(db: Session, rows: List[Dict]) -> Dict[str, int]:
     """
     For each SuVeechi row:
@@ -119,7 +146,11 @@ def upsert_locations(db: Session, rows: List[Dict]) -> Dict[str, int]:
 
         lat = row.get("latitude")
         lon = row.get("longitude")
-        reported = row.get("reporttime_ist") or row.get("reporttime_gmt") or datetime.utcnow()
+        # _to_aware_utc handles three cases: aware passes through (converted
+        # to UTC), naive is tagged as UTC, None falls back to now(UTC).
+        reported = _to_aware_utc(
+            row.get("reporttime_ist") or row.get("reporttime_gmt")
+        ) or datetime.now(timezone.utc)
         suveechi_status = row.get("status")
         mapped_status = map_status(suveechi_status)
 
@@ -154,6 +185,10 @@ def upsert_locations(db: Session, rows: List[Dict]) -> Dict[str, int]:
             latest_for_fleet = db.query(
                 func.max(FleetLiveLocation.last_updated)
             ).filter(FleetLiveLocation.fleet_id == fleet_id).scalar()
+            # PG TIMESTAMPTZ should always return aware-UTC, but old rows from
+            # earlier code paths can be naive — normalize defensively so the
+            # comparison below never raises again.
+            latest_for_fleet = _to_aware_utc(latest_for_fleet)
 
             if latest_for_fleet is None or latest_for_fleet < reported:
                 db.add(FleetLiveLocation(
