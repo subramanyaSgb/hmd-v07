@@ -613,18 +613,25 @@ if errorlevel 1 (
     goto :error
 )
 
-echo     Installing/updating backend dependencies...
-python -m pip install --upgrade pip -q > "%LOG_DIR%\pip_install.log" 2>&1
-pip install -r backend\requirements.txt -q >> "%LOG_DIR%\pip_install.log" 2>&1
-if errorlevel 1 goto :pip_had_issues
-echo     [OK] Dependencies installed
-goto :pip_done
-:pip_had_issues
-echo     [!] Some pip packages may have issues
-echo     [!] Errors from pip install:
-type "%LOG_DIR%\pip_install.log" 2>nul | findstr /i "error ERROR Error"
-call :press_any_key
-:pip_done
+echo     Upgrading pip...
+python -m pip install --upgrade pip
+if errorlevel 1 (
+    echo     [!] pip self-upgrade had issues — continuing anyway
+)
+echo.
+echo     Installing backend dependencies (this can take 1-5 min on first run)...
+echo     ------------------------------------------------------------------------
+:: Stream pip output directly to console so the user sees progress.
+:: Errors are visible inline; the window is paused at end so logs aren't lost.
+pip install -r backend\requirements.txt
+set PIP_RC=%ERRORLEVEL%
+echo     ------------------------------------------------------------------------
+if not "%PIP_RC%"=="0" (
+    echo     [X] pip install failed (exit code %PIP_RC%^) — see errors above
+    call :press_any_key
+    goto :error
+)
+echo     [OK] Backend dependencies installed
 
 :skip_venv
 
@@ -638,16 +645,19 @@ echo   ------------------------------------------------------------------------
 
 cd frontend
 if exist node_modules goto :frontend_deps_ready
-echo     Installing npm packages...
-call npm install > "..\%LOG_DIR%\npm_install.log" 2>&1
-if errorlevel 1 (
-    echo     [X] npm install failed
-    echo     [!] Error details:
-    type "..\%LOG_DIR%\npm_install.log" 2>nul | findstr /i "error ERROR ERR!"
+echo     Installing npm packages (this can take 1-3 min on first run)...
+echo     ------------------------------------------------------------------------
+:: Stream npm output directly so the user sees download/install progress.
+call npm install
+set NPM_RC=%ERRORLEVEL%
+echo     ------------------------------------------------------------------------
+if not "%NPM_RC%"=="0" (
+    echo     [X] npm install failed (exit code %NPM_RC%^) — see errors above
     cd ..
+    call :press_any_key
     goto :error
 )
-echo     [OK] npm packages installed
+echo     [OK] Frontend packages installed
 goto :frontend_deps_done
 :frontend_deps_ready
 echo     [OK] node_modules exists
@@ -667,12 +677,15 @@ echo   ------------------------------------------------------------------------
 cd whatsapp-service
 if exist node_modules goto :whatsapp_deps_ready
 echo     Installing WhatsApp service npm packages...
-call npm install > "..\%LOG_DIR%\npm_whatsapp_install.log" 2>&1
-if errorlevel 1 (
-    echo     [X] WhatsApp npm install failed
-    echo     [!] Error details:
-    type "..\%LOG_DIR%\npm_whatsapp_install.log" 2>nul | findstr /i "error ERROR ERR!"
+echo     ------------------------------------------------------------------------
+:: Stream npm output directly so the user sees progress.
+call npm install
+set NPM_RC=%ERRORLEVEL%
+echo     ------------------------------------------------------------------------
+if not "%NPM_RC%"=="0" (
+    echo     [X] WhatsApp npm install failed (exit code %NPM_RC%^) — see errors above
     cd ..
+    call :press_any_key
     goto :error
 )
 echo     [OK] WhatsApp packages installed
