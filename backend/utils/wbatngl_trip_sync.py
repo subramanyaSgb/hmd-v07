@@ -81,3 +81,48 @@ def _zero_to_null(value: Optional[float | int]) -> Optional[float]:
     if v <= 1e-9:
         return None
     return v
+
+
+def row_to_mirror_dict(
+    row: tuple,
+    cols: list[str],
+    source_table: str,
+) -> Optional[dict]:
+    """
+    Map an Oracle row tuple to a dict shaped for `wbatngl_trip_mirror` UPSERT.
+
+    Returns None for rows that should be skipped (e.g., non-torpedo LADLENOs).
+    """
+    r = dict(zip(cols, row))
+    fleet_id = normalize_ladleno(r.get("LADLENO"))
+    if fleet_id is None:
+        return None    # not a torpedo; caller increments skipped counter
+
+    return {
+        "trip_id": r.get("TRIP_ID"),
+        "tap_no": r.get("TAPNO"),
+        "ladleno_raw": r.get("LADLENO"),
+        "fleet_id": fleet_id,
+        "source_lab": r.get("SOURCE_LAB"),
+        "destination": (r.get("DESTINATION") or "").strip() or None,
+        "tap_hole": r.get("TAPHOLE"),
+
+        "gross_weight": r.get("GROSS_WEIGHT"),
+        "tare_weight": r.get("TARE_WEIGHT"),
+        "net_weight": r.get("NET_WEIGHT"),
+
+        "temp": _zero_to_null(r.get("TEMP")),
+        "si_l": _zero_to_null(r.get("SI_L")),
+        "s_l":  _zero_to_null(r.get("S_L")),
+        "bds_temp": _zero_to_null(r.get("BDS_TEMP") or r.get("HTS_BDS_TEMP")),
+
+        "shift": (r.get("SHIFT") or "").strip() or None,
+        "source_table": source_table,
+
+        "first_tare_time": parse_wbatngl_date(r.get("FIRST_TARE_TIME")),
+        "out_date":        parse_wbatngl_date(r.get("OUT_DATE")),
+        "closetime":       parse_wbatngl_date(r.get("CLOSETIME")),
+        "received_date":   parse_wbatngl_date(r.get("RECEIVED_DATE")),
+        "sms_ack_time":    parse_wbatngl_date(r.get("SMS_ACK_TIME")),
+        "updated_date":    parse_wbatngl_date(r.get("UPDATED_DATE")),
+    }

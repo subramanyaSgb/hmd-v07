@@ -57,3 +57,41 @@ class TestZeroToNull:
     ])
     def test_treats_zero_and_below_as_unmeasured(self, raw, expected):
         assert _zero_to_null(raw) == expected
+
+
+from backend.utils.wbatngl_trip_sync import row_to_mirror_dict
+from backend.tests.fixtures.wbatngl_sample import BF3_COLS, BF3_SAMPLE
+
+
+class TestRowToMirrorDict:
+    def test_typical_row_maps_all_fields(self):
+        d = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
+                               source_table='BF3."WB_TRANS_DATA_ITRO"')
+        assert d["trip_id"] == "74558TLC 011070526"
+        assert d["fleet_id"] == "TLC-01"
+        assert d["ladleno_raw"] == "TLC 01"
+        assert d["source_lab"] == "BF4"            # column says BF4, even from BF3 table
+        assert d["destination"] == "SMS2"
+        assert d["temp"] == 1500.42
+        assert d["si_l"] == 0.64
+        assert d["s_l"] == 0.028
+        assert d["shift"] == "A"
+        assert d["source_table"] == 'BF3."WB_TRANS_DATA_ITRO"'
+
+    def test_idle_row_zeros_become_null(self):
+        d = row_to_mirror_dict(BF3_SAMPLE[1], BF3_COLS,
+                               source_table='BF3."WB_TRANS_DATA_ITRO"')
+        assert d["temp"] is None
+        assert d["s_l"] is None
+        assert d["si_l"] is None
+
+    def test_otl_row_returns_none(self):
+        # OTL is filtered out at this layer (returns None → caller skips row).
+        d = row_to_mirror_dict(BF3_SAMPLE[2], BF3_COLS,
+                               source_table='BF3."WB_TRANS_DATA_ITRO"')
+        assert d is None
+
+    def test_received_date_varchar_parses(self):
+        d = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
+                               source_table='BF3."WB_TRANS_DATA_ITRO"')
+        assert d["received_date"] == datetime(2026, 5, 7, 11, 3, 20)
