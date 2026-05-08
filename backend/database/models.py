@@ -520,3 +520,44 @@ class WhatsAppMessageLog(Base):
     __table_args__ = (
         Index('idx_whatsapp_log_status_created', 'status', 'created_at'),
     )
+
+class WbatnglTripMirror(Base):
+    """
+    Read-only mirror of JSW WBATNGL trip-transaction data. Populated by the
+    `wbatngl_trip_sync` background job, consumed by `/api/jsw/*` endpoints.
+
+    NOT to be joined to or mutated from the existing manual-trip flow — see
+    docs/plans/2026-05-08-wbatngl-trip-mirror-design.md (Topic 5: strict
+    separation).
+    """
+    __tablename__ = "wbatngl_trip_mirror"
+
+    id = Column(Integer, primary_key=True)
+    trip_id = Column(String(50), unique=True, nullable=False, index=True)
+    tap_no = Column(Integer)
+    ladleno_raw = Column(String(15))
+    fleet_id = Column(String(15), index=True)
+    source_lab = Column(String(10))
+    destination = Column(String(50))
+    tap_hole = Column(Integer)
+
+    gross_weight = Column(Float)
+    tare_weight = Column(Float)
+    net_weight = Column(Float)
+
+    temp = Column(Float)
+    si_l = Column(Float)
+    s_l = Column(Float)
+    bds_temp = Column(Float)
+
+    shift = Column(String(2))
+    source_table = Column(String(60))
+
+    first_tare_time = Column(DateTime)
+    out_date = Column(DateTime)
+    closetime = Column(DateTime)
+    received_date = Column(DateTime)
+    sms_ack_time = Column(DateTime)
+    updated_date = Column(DateTime, index=True)
+
+    synced_at = Column(DateTime, server_default=func.now())
