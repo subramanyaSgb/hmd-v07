@@ -320,6 +320,31 @@ def schedule_wbatngl_capacity_sync():
     logger.info("WBATNGL capacity sync scheduled daily at 03:00 IST")
 
 
+def schedule_wbatngl_trip_sync():
+    """Register interval job that mirrors WBATNGL trip rows every 60 s."""
+    if os.getenv("WBATNGL_TRIP_SYNC_ENABLED", "false").lower() != "true":
+        logger.info("WBATNGL trip sync disabled (set WBATNGL_TRIP_SYNC_ENABLED=true to enable).")
+        return
+
+    interval_sec = int(os.getenv("WBATNGL_TRIP_SYNC_INTERVAL_SECONDS", "60"))
+
+    import asyncio
+    from .utils.wbatngl_trip_sync import run_once as wbatngl_trip_run_once
+
+    async def _run_trip_sync():
+        try:
+            await asyncio.to_thread(wbatngl_trip_run_once)
+        except Exception as e:
+            logger.exception(f"WBATNGL trip sync job error: {e}")
+
+    scheduler.add_job(
+        _run_trip_sync, IntervalTrigger(seconds=interval_sec),
+        id="wbatngl_trip_sync", name="WBATNGL Trip Mirror",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+    logger.info(f"WBATNGL trip sync scheduled every {interval_sec}s")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Running database initialization...")
@@ -333,6 +358,7 @@ async def startup_event():
     schedule_daily_report()
     schedule_suveechi_sync()
     schedule_wbatngl_capacity_sync()
+    schedule_wbatngl_trip_sync()
 
     logger.success("FastAPI server is running and database is initialized.")
 
