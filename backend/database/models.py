@@ -529,6 +529,14 @@ class WbatnglTripMirror(Base):
     NOT to be joined to or mutated from the existing manual-trip flow — see
     docs/plans/2026-05-08-wbatngl-trip-mirror-design.md (Topic 5: strict
     separation).
+
+    Index drift note: only the `fleet_id` and `updated_date` indexes are
+    declared on the ORM. The composite `(source_lab, destination)` index and
+    the partial chemistry index (on `updated_date` WHERE temp/si_l/s_l IS NOT
+    NULL) live exclusively in migration `8ccb1a387ca7`. The partial index is
+    not expressible in declarative SQLAlchemy without raw `text()`, so we
+    accept that `alembic revision --autogenerate` will propose phantom diffs
+    for those two indexes — those diffs must be discarded, not applied.
     """
     __tablename__ = "wbatngl_trip_mirror"
 
