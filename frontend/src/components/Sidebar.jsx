@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
-import { LayoutDashboard, Settings as SettingsIcon, ClipboardList, Truck, Activity, BarChart2, Container, FileText, Shield } from 'lucide-react'
+import { LayoutDashboard, Settings as SettingsIcon, ClipboardList, Truck, Activity, BarChart2, Container, FileText, Shield, Factory } from 'lucide-react'
 
 const Sidebar = () => {
     const { user, logout } = useAuth()
@@ -19,6 +19,7 @@ const Sidebar = () => {
         { path: '/planning/monthly', label: 'Strategic Planning', icon: <ClipboardList size={20} /> },
         { path: '/trips', label: 'Trip Management', icon: <Truck size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
+        { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/fleet', label: 'Torpedo Management', icon: <Container size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
         { path: '/audit', label: 'Audit Trail', icon: <Shield size={20} /> },
@@ -31,6 +32,7 @@ const Sidebar = () => {
         { path: '/planning/monthly', label: 'Strategic Planning', icon: <ClipboardList size={20} /> },
         { path: '/trips', label: 'Trip Management', icon: <Truck size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
+        { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/fleet', label: 'Torpedo Management', icon: <Container size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
         { path: '/operations', label: 'Operations Control', icon: <Activity size={20} /> },
@@ -40,6 +42,7 @@ const Sidebar = () => {
     const ppcMenuItems = [
         { path: '/statistics', label: 'Dashboard', icon: <BarChart2 size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
+        { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
         { path: '/settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
     ]

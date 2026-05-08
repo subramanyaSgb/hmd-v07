@@ -20,6 +20,7 @@ const Operations = lazy(() => import('./pages/Operations'))
 const MonthlyPlanning = lazy(() => import('./pages/MonthlyPlanning'))
 const MaintenanceScheduling = lazy(() => import('./pages/MaintenanceScheduling'))
 const Reports = lazy(() => import('./pages/Reports'))
+const PlantLive = lazy(() => import('./pages/PlantLive'))
 
 export const ROUTE_CONFIG = {
   '/': { title: 'Live Tracking' },
@@ -146,6 +147,7 @@ function AppRoutes() {
       <Route path="/" element={<PageWrapper><Dashboard /></PageWrapper>} />
       <Route path="/statistics" element={<PageWrapper><Statistics /></PageWrapper>} />
       <Route path="/trips" element={<PageWrapper><TripManagement /></PageWrapper>} />
+      <Route path="/plant" element={<PageWrapper><PlantLive /></PageWrapper>} />
       <Route path="/settings" element={<PageWrapper><Settings /></PageWrapper>} />
       {isAdminOrTRS && (
         <>
