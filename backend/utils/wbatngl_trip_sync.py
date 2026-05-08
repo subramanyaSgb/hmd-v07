@@ -185,3 +185,51 @@ def watermark_for_source(db: Session, source_table: str) -> datetime:
         .where(WbatnglTripMirror.source_table == source_table)
     ).scalar()
     return result or _WATERMARK_FLOOR
+
+
+def pull_and_upsert_from_source(
+    db: Session,
+    cursor,
+    source_table: str,
+    watermark: datetime,
+) -> dict:
+    """
+    Execute the incremental SELECT against `source_table`, run each row
+    through row_to_mirror_dict, UPSERT the surviving torpedo rows.
+
+    `cursor` is an oracledb cursor (already connected by the caller).
+    `source_table` is 'BF3."WB_TRANS_DATA_ITRO"' / 'BF5."ZWB_TRANSACTION_DATA_ITRO_B"'
+    — the qualified Oracle name (used for the SELECT and as the audit tag).
+    """
+    # source_table is "OWNER.\"TABLE\"" — it's already a valid Oracle reference.
+    # We use it verbatim in SELECT FROM and pass the same string as the audit tag.
+    sql = (
+        f"SELECT * FROM {source_table} "
+        f"WHERE UPDATED_DATE > :wm "
+        f"  AND LADLENO LIKE 'TLC%' "
+        f"  AND TRIP_ID IS NOT NULL"
+    )
+    cursor.execute(sql, wm=watermark)
+    rows = cursor.fetchall()
+    cols = [d[0] for d in cursor.description]
+
+    stats = {"fetched": len(rows),
+             "upserted": 0,
+             "skipped_non_torpedo": 0,
+             "errors": 0}
+
+    mirror_rows = []
+    for r in rows:
+        try:
+            d = row_to_mirror_dict(r, cols, source_table)
+        except Exception:
+            logger.exception(f"row_to_mirror_dict failed for {r!r}")
+            stats["errors"] += 1
+            continue
+        if d is None:
+            stats["skipped_non_torpedo"] += 1
+            continue
+        mirror_rows.append(d)
+
+    stats["upserted"] = upsert_rows(db, mirror_rows)
+    return stats

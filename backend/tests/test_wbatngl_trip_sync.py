@@ -166,3 +166,45 @@ class TestWatermark:
             db_session, 'BF3."WB_TRANS_DATA_ITRO"')
         assert bf5_wm == datetime(2026, 5, 7, 9, 26, 13)
         assert bf3_wm == datetime(1970, 1, 1)
+
+
+from unittest.mock import MagicMock
+from backend.utils.wbatngl_trip_sync import pull_and_upsert_from_source
+
+
+class TestPullAndUpsertFromSource:
+    def test_filters_otl_and_returns_count(self, db_session: Session):
+        # Mock oracle cursor to return BF3_SAMPLE
+        cursor = MagicMock()
+        cursor.description = [(c,) for c in BF3_COLS]
+        cursor.fetchall.return_value = BF3_SAMPLE
+
+        stats = pull_and_upsert_from_source(
+            db=db_session,
+            cursor=cursor,
+            source_table='BF3."WB_TRANS_DATA_ITRO"',
+            watermark=datetime(1970, 1, 1),
+        )
+        assert stats["fetched"] == 6
+        assert stats["upserted"] == 5      # 6 - 1 OTL
+        assert stats["skipped_non_torpedo"] == 1
+        assert db_session.query(WbatnglTripMirror).count() == 5
+
+        # Verify cursor was called with the watermark in SQL
+        called_sql = cursor.execute.call_args[0][0]
+        assert "UPDATED_DATE >" in called_sql.upper()
+        assert "LADLENO LIKE" in called_sql.upper()
+
+    def test_no_rows_returns_empty_stats(self, db_session: Session):
+        cursor = MagicMock()
+        cursor.description = [(c,) for c in BF3_COLS]
+        cursor.fetchall.return_value = []
+
+        stats = pull_and_upsert_from_source(
+            db=db_session,
+            cursor=cursor,
+            source_table='BF5."ZWB_TRANSACTION_DATA_ITRO_B"',
+            watermark=datetime(2026, 5, 1),
+        )
+        assert stats == {"fetched": 0, "upserted": 0,
+                         "skipped_non_torpedo": 0, "errors": 0}
