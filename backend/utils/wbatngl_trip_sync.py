@@ -48,7 +48,7 @@ def parse_wbatngl_date(raw: Optional[str | datetime]) -> Optional[datetime]:
     """
     Parse a WBATNGL date that might already be a datetime, or a VARCHAR2
     in one of the formats JSW uses. Returns None for empty/garbage input
-    (with a debug log) instead of raising — never crash the sync batch.
+    (with a warning log) instead of raising — never crash the sync batch.
     """
     if raw is None:
         return None
