@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from backend.database.models import FleetLiveLocation, FleetManagement
-from backend.utils.suveechi_sync import _to_aware_utc, upsert_locations
+from backend.utils.suveechi_sync import _to_aware_utc, map_status, upsert_locations
 
 
 class TestToAwareUtc:
@@ -114,3 +114,90 @@ class TestUpsertLocationsTimezoneSafety:
         }]
         stats = upsert_locations(db_session, rows)
         assert stats["locations_inserted"] == 0
+
+
+class TestMapStatus:
+    """Regression for SMS4 2026-05-08: torpedoes visibly moving on the map
+    but every label showed "Idle" because backend collapsed SuVeechi's
+    "Moving" signal into "Operating" before it ever reached the database."""
+
+    @pytest.mark.parametrize("suveechi_status, expected_hmd_status", [
+        # Common case: parked with engine on → "Idle" in UI display.
+        ("Idle",     "Operating"),
+        # Bug fix: actively driving → preserve as "Moving" so UI counter
+        # picks it up. Pre-fix this returned "Operating".
+        ("Moving",   "Moving"),
+        # Engine off → temporarily unavailable → shown as "Maint".
+        ("Ign Off",  "Maintenance"),
+        # Whitespace tolerance.
+        ("  Moving  ", "Moving"),
+        # Unknown / future status → safe default.
+        ("Unknown",  "Operating"),
+        ("",         "Operating"),
+        (None,       "Operating"),
+    ])
+    def test_maps_each_suveechi_status(
+            self, suveechi_status, expected_hmd_status):
+        assert map_status(suveechi_status) == expected_hmd_status
+
+    def test_moving_status_persists_through_upsert(
+            self, db_session: Session):
+        """End-to-end: SuVeechi sends Moving → FleetManagement.status = Moving."""
+        rows = [{
+            "unitname": "TLC 53", "status": "Moving",
+            "location": "BF3 → SMS2",
+            "latitude": 15.18, "longitude": 76.94,
+            "reporttime_ist": datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc),
+            "reporttime_gmt": None,
+        }]
+        upsert_locations(db_session, rows)
+
+        fleet = db_session.query(FleetManagement).filter_by(
+            fleet_id="TLC-53").first()
+        assert fleet is not None
+        assert fleet.status == "Moving"   # not "Operating"!
+
+    def test_status_flips_back_to_operating_when_moving_stops(
+            self, db_session: Session):
+        """Tick 1: torpedo Moving → status=Moving.
+           Tick 2: torpedo parks (Idle) → status=Operating again."""
+        when1 = datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc)
+        when2 = datetime(2026, 5, 8, 12, 0, 30, tzinfo=timezone.utc)
+
+        rows1 = [{
+            "unitname": "TLC 7", "status": "Moving", "location": "BF3",
+            "latitude": 15.18, "longitude": 76.94,
+            "reporttime_ist": when1, "reporttime_gmt": None,
+        }]
+        upsert_locations(db_session, rows1)
+
+        rows2 = [{
+            "unitname": "TLC 7", "status": "Idle", "location": "BF3",
+            "latitude": 15.18, "longitude": 76.94,
+            "reporttime_ist": when2, "reporttime_gmt": None,
+        }]
+        upsert_locations(db_session, rows2)
+
+        fleet = db_session.query(FleetManagement).filter_by(
+            fleet_id="TLC-7").first()
+        assert fleet.status == "Operating"
+
+    def test_maintenance_state_not_overwritten_by_gps(
+            self, db_session: Session):
+        """If a torpedo was manually set to Maintenance, GPS sync must not
+        flip it back to Operating/Moving even if SuVeechi says Idle/Moving."""
+        db_session.add(FleetManagement(
+            fleet_id="TLC-99", type="torpedo", status="Maintenance"))
+        db_session.commit()
+
+        rows = [{
+            "unitname": "TLC 99", "status": "Moving", "location": "x",
+            "latitude": 15.18, "longitude": 76.94,
+            "reporttime_ist": datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc),
+            "reporttime_gmt": None,
+        }]
+        upsert_locations(db_session, rows)
+
+        fleet = db_session.query(FleetManagement).filter_by(
+            fleet_id="TLC-99").first()
+        assert fleet.status == "Maintenance"   # preserved

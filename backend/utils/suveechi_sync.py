@@ -62,10 +62,23 @@ def normalize_fleet_id(unitname: str) -> str:
     return unitname.strip().replace(" ", "-")
 
 
-# Map SuVeechi unit status → FleetManagement.status
+# Map SuVeechi unit status → FleetManagement.status.
+#
+# SMS4 prod regression 2026-05-08: torpedoes were visibly moving on the Live
+# Tracking map (GPS coords updating tick-by-tick) but every label showed
+# "Idle" — and the bottom counter showed MOVING 0 / IDLE 49. The UI was
+# faithfully showing what we stored: "Operating" with no trip context renders
+# as "Idle". Root cause was the collapse of "Moving" → "Operating" below,
+# which threw away SuVeechi's already-good moving signal before it ever
+# reached the database.
+#
+# Now we preserve "Moving" verbatim. Display mapping in the UI:
+#   Operating + no trip   → "Idle"  (SuVeechi: ign on, parked)
+#   Moving                → "Moving" (SuVeechi: actively driving)
+#   Maintenance           → "Maint" (SuVeechi: ign off)
 SUVEECHI_STATUS_MAP = {
     "Idle":    "Operating",
-    "Moving":  "Operating",
+    "Moving":  "Moving",
     "Ign Off": "Maintenance",  # ignition off → temporarily out
 }
 
