@@ -95,3 +95,41 @@ class TestRowToMirrorDict:
         d = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
                                source_table='BF3."WB_TRANS_DATA_ITRO"')
         assert d["received_date"] == datetime(2026, 5, 7, 11, 3, 20)
+
+
+from sqlalchemy.orm import Session
+from backend.database.models import WbatnglTripMirror
+from backend.utils.wbatngl_trip_sync import upsert_rows
+
+
+class TestUpsertRows:
+    def test_inserts_new_rows(self, db_session: Session):
+        rows = [row_to_mirror_dict(r, BF3_COLS,
+                                    'BF3."WB_TRANS_DATA_ITRO"')
+                for r in BF3_SAMPLE]
+        rows = [r for r in rows if r is not None]   # drop OTL
+        n = upsert_rows(db_session, rows)
+        assert n == 5     # 6 sample rows minus 1 OTL
+        assert db_session.query(WbatnglTripMirror).count() == 5
+
+    def test_upsert_is_idempotent(self, db_session: Session):
+        rows = [row_to_mirror_dict(r, BF3_COLS,
+                                    'BF3."WB_TRANS_DATA_ITRO"')
+                for r in BF3_SAMPLE if r[1] != "OTL 23"]
+        upsert_rows(db_session, rows)
+        upsert_rows(db_session, rows)   # second pass — should not duplicate
+        assert db_session.query(WbatnglTripMirror).count() == 5
+
+    def test_upsert_updates_changed_fields(self, db_session: Session):
+        d = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
+                               'BF3."WB_TRANS_DATA_ITRO"')
+        upsert_rows(db_session, [d])
+        d["temp"] = 1495.0     # imagine WBATNGL revised the temp
+        upsert_rows(db_session, [d])
+        row = db_session.query(WbatnglTripMirror).filter_by(
+            trip_id=d["trip_id"]).first()
+        assert row.temp == 1495.0
+
+    def test_empty_input_returns_zero(self, db_session: Session):
+        assert upsert_rows(db_session, []) == 0
+        assert db_session.query(WbatnglTripMirror).count() == 0

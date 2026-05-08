@@ -13,6 +13,9 @@ Env vars (read at runtime):
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy.orm import Session
+
+from ..database.models import WbatnglTripMirror
 from ..logger import logger
 
 
@@ -126,3 +129,42 @@ def row_to_mirror_dict(
         "sms_ack_time":    parse_wbatngl_date(r.get("SMS_ACK_TIME")),
         "updated_date":    parse_wbatngl_date(r.get("UPDATED_DATE")),
     }
+
+
+def upsert_rows(db: Session, rows: list[dict]) -> int:
+    """
+    UPSERT a batch of mirror dicts into wbatngl_trip_mirror.
+    Conflict target: trip_id (unique constraint).
+    Update columns: everything except id, trip_id, synced_at.
+
+    Production runs on PostgreSQL; tests run on SQLite. Both dialects
+    expose `on_conflict_do_update(index_elements=...)` with identical
+    semantics, so we dispatch on the bound engine's dialect.
+    Returns count of rows successfully UPSERTed.
+    """
+    if not rows:
+        return 0
+
+    update_cols = [
+        c.name for c in WbatnglTripMirror.__table__.columns
+        if c.name not in ("id", "trip_id", "synced_at")
+    ]
+
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    else:
+        raise RuntimeError(
+            f"upsert_rows: unsupported dialect {dialect!r} (need postgresql or sqlite)"
+        )
+
+    stmt = dialect_insert(WbatnglTripMirror).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["trip_id"],
+        set_={col: stmt.excluded[col] for col in update_cols},
+    )
+    db.execute(stmt)
+    db.commit()
+    return len(rows)
