@@ -146,6 +146,42 @@ def row_to_mirror_dict(
     }
 
 
+UPSERT_CHUNK_SIZE = 500
+
+
+def _dedupe_by_trip_id(rows: list[dict]) -> list[dict]:
+    """
+    Collapse rows that share a trip_id, keeping the one with the latest
+    updated_date (None treated as oldest).
+
+    PostgreSQL's `INSERT ... ON CONFLICT (trip_id) DO UPDATE` raises
+    `cardinality_violation: ON CONFLICT DO UPDATE command cannot affect
+    row a second time` when the same conflict-target row appears twice
+    in the same statement. Oracle frequently returns multiple rows per
+    TRIP_ID (a trip's weight gets revised → multiple UPDATED_DATE entries
+    sharing one TRIP_ID), so we MUST dedupe before sending to PG.
+
+    The latest-by-updated_date wins because that's the value the next
+    sync tick's watermark will see anyway — picking the older one would
+    just cause it to be overwritten on the very next pull.
+    """
+    if not rows:
+        return rows
+    by_id: dict[str, dict] = {}
+    epoch = datetime(1970, 1, 1)
+    for r in rows:
+        tid = r["trip_id"]
+        existing = by_id.get(tid)
+        if existing is None:
+            by_id[tid] = r
+            continue
+        new_ts = r.get("updated_date") or epoch
+        old_ts = existing.get("updated_date") or epoch
+        if new_ts >= old_ts:
+            by_id[tid] = r
+    return list(by_id.values())
+
+
 def upsert_rows(db: Session, rows: list[dict]) -> int:
     """
     UPSERT a batch of mirror dicts into wbatngl_trip_mirror.
@@ -155,10 +191,22 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
     Production runs on PostgreSQL; tests run on SQLite. Both dialects
     expose `on_conflict_do_update(index_elements=...)` with identical
     semantics, so we dispatch on the bound engine's dialect.
-    Returns count of rows successfully UPSERTed.
+
+    Behaviour:
+      - Deduplicates `rows` by trip_id before sending to PG (PG rejects
+        duplicates within a single ON CONFLICT statement; see _dedupe_by_trip_id).
+      - Chunks at UPSERT_CHUNK_SIZE rows per statement so a 30 k-row
+        backfill doesn't blow past psycopg2's 32 767-bound-parameter limit
+        (3598 rows × 22 cols = ~79 k parameters → exceeded the limit on
+        SMS4 2026-05-08, masked as a generic DataError).
+      - Commits once at the end so all chunks land atomically.
+
+    Returns count of rows actually persisted (post-dedup), not input length.
     """
     if not rows:
         return 0
+
+    deduped = _dedupe_by_trip_id(rows)
 
     update_cols = [
         c.name for c in WbatnglTripMirror.__table__.columns
@@ -175,14 +223,18 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
             f"upsert_rows: unsupported dialect {dialect!r} (need postgresql or sqlite)"
         )
 
-    stmt = dialect_insert(WbatnglTripMirror).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["trip_id"],
-        set_={col: stmt.excluded[col] for col in update_cols},
-    )
-    db.execute(stmt)
+    persisted = 0
+    for i in range(0, len(deduped), UPSERT_CHUNK_SIZE):
+        chunk = deduped[i:i + UPSERT_CHUNK_SIZE]
+        stmt = dialect_insert(WbatnglTripMirror).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["trip_id"],
+            set_={col: stmt.excluded[col] for col in update_cols},
+        )
+        db.execute(stmt)
+        persisted += len(chunk)
     db.commit()
-    return len(rows)
+    return persisted
 
 
 def watermark_for_source(db: Session, source_table: str) -> datetime:
@@ -328,8 +380,22 @@ def run_once(backfill_days: int = 0) -> dict:
             try:
                 stats = pull_and_upsert_from_source(db, cursor, src, wm)
             except Exception as e:
-                logger.exception(f"WBATNGL source {src} failed: {e}")
+                # Concise log — full traceback at exception level only;
+                # don't dump the SQL+params blob (one source's failure
+                # can otherwise produce a 1MB log line, observed
+                # 2026-05-08 SMS4).
+                logger.exception(
+                    f"WBATNGL source {src} failed: {type(e).__name__}: {e}"
+                )
                 total["errors"] += 1
+                # Critical: PG marks the whole transaction as aborted on
+                # any error, so subsequent statements raise
+                # InFailedSqlTransaction. Rollback so the next source
+                # starts fresh.
+                try:
+                    db.rollback()
+                except Exception:
+                    logger.exception("WBATNGL rollback failed (non-fatal)")
                 continue
             for k in total:
                 total[k] += stats.get(k, 0)

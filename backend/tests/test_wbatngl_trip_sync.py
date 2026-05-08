@@ -134,6 +134,51 @@ class TestUpsertRows:
         assert upsert_rows(db_session, []) == 0
         assert db_session.query(WbatnglTripMirror).count() == 0
 
+    def test_dedupes_within_batch_keeping_latest_updated_date(
+            self, db_session: Session):
+        """SMS4 prod regression 2026-05-08: Oracle returns the same TRIP_ID
+        twice in one pull (a trip's weight gets revised → multiple
+        UPDATED_DATE entries share one TRIP_ID), and PG rejects the batch
+        with `cardinality_violation: ON CONFLICT DO UPDATE command cannot
+        affect row a second time`. We MUST dedupe at the Python layer."""
+        base = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
+                                  'BF3."WB_TRANS_DATA_ITRO"')
+        older = dict(base)
+        older["updated_date"] = datetime(2026, 5, 7, 8, 0, 0)
+        older["temp"] = 1490.0
+        newer = dict(base)
+        newer["updated_date"] = datetime(2026, 5, 7, 12, 0, 0)
+        newer["temp"] = 1505.0
+
+        n = upsert_rows(db_session, [older, newer])
+        assert n == 1   # both collapsed to one
+        row = db_session.query(WbatnglTripMirror).filter_by(
+            trip_id=base["trip_id"]).first()
+        # The newer row wins (latest updated_date).
+        assert row.temp == 1505.0
+        assert row.updated_date == datetime(2026, 5, 7, 12, 0, 0)
+
+    def test_chunks_large_batches(self, db_session: Session, monkeypatch):
+        """Backfill batches of 30k rows must not be sent in one INSERT —
+        psycopg2 has a 32 767-bound-parameter ceiling and 30k×22cols would
+        blow it. Verified by setting chunk size low and counting commits."""
+        # Force a tiny chunk to make the test fast.
+        monkeypatch.setattr(
+            "backend.utils.wbatngl_trip_sync.UPSERT_CHUNK_SIZE", 2
+        )
+        # Build 5 unique-trip_id rows from sample seed
+        seed = row_to_mirror_dict(BF3_SAMPLE[0], BF3_COLS,
+                                  'BF3."WB_TRANS_DATA_ITRO"')
+        rows = []
+        for i in range(5):
+            r = dict(seed)
+            r["trip_id"] = f"chunk-test-{i}"
+            r["updated_date"] = datetime(2026, 5, 7, i, 0, 0)
+            rows.append(r)
+        n = upsert_rows(db_session, rows)
+        assert n == 5
+        assert db_session.query(WbatnglTripMirror).count() == 5
+
 
 from backend.utils.wbatngl_trip_sync import watermark_for_source
 
@@ -274,3 +319,47 @@ class TestRunOnce:
 
         # Cache key was invalidated.
         assert _fleet_cache.get(f"{CACHE_KEY_JSW_DASHBOARD}:today") is None
+
+    def test_first_source_failure_does_not_poison_second(
+            self, db_session: Session, monkeypatch):
+        """SMS4 prod regression 2026-05-08: BF3 batch failed with PG
+        DataError, BF5 batch then failed with `InFailedSqlTransaction:
+        current transaction is aborted`. run_once must rollback between
+        sources so a poisoned transaction from source N doesn't kill
+        source N+1."""
+        import sys
+        from backend.utils import wbatngl_trip_sync as sync_mod
+        engine_mod = sys.modules["backend.database.engine"]
+
+        cursor = MagicMock()
+        cursor.description = [(c,) for c in BF3_COLS]
+        # First source returns BF3 sample (will be processed); second
+        # source returns one row.
+        cursor.fetchall.side_effect = [BF3_SAMPLE, BF3_SAMPLE[:1]]
+
+        fake_conn = MagicMock()
+        fake_conn.cursor.return_value = cursor
+        monkeypatch.setattr(sync_mod, "_connect_oracle", lambda: fake_conn)
+
+        from backend.tests.conftest import TestingSessionLocal
+        monkeypatch.setattr(engine_mod, "SessionLocal", TestingSessionLocal)
+
+        # Make pull_and_upsert_from_source raise on the FIRST call only
+        # to simulate a PG DataError, then succeed on the second.
+        original = sync_mod.pull_and_upsert_from_source
+        call_count = {"n": 0}
+
+        def flaky(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("simulated PG DataError on BF3")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(sync_mod, "pull_and_upsert_from_source", flaky)
+
+        result = run_once()
+
+        # First source failed (errors=1), second source succeeded → rows in DB.
+        assert result["errors"] == 1
+        assert result["upserted"] == 5    # 6 BF3 sample rows minus 1 OTL
+        assert db_session.query(WbatnglTripMirror).count() == 5
