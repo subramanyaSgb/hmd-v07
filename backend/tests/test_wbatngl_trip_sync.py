@@ -1,7 +1,9 @@
 """Tests for backend.utils.wbatngl_trip_sync."""
+from datetime import datetime
+
 import pytest
 
-from backend.utils.wbatngl_trip_sync import normalize_ladleno
+from backend.utils.wbatngl_trip_sync import normalize_ladleno, parse_wbatngl_date
 
 
 class TestNormalizeLadleno:
@@ -19,3 +21,23 @@ class TestNormalizeLadleno:
     ])
     def test_handles_all_known_inputs(self, raw, expected):
         assert normalize_ladleno(raw) == expected
+
+
+class TestParseWbatnglDate:
+    @pytest.mark.parametrize("raw, expected", [
+        # Already a datetime → pass-through
+        (datetime(2026, 5, 7, 5, 10, 36), datetime(2026, 5, 7, 5, 10, 36)),
+        # DD/MM/YYYY HH:MM:SS — FIRST_TARE_TIME format in some tables
+        ("07/05/2026 11:59:06", datetime(2026, 5, 7, 11, 59, 6)),
+        # MM/DD/YYYY HH:MM:SS AM/PM — RECEIVED_DATE format
+        ("05/07/2026 11:03:20 AM", datetime(2026, 5, 7, 11, 3, 20)),
+        ("05/07/2026 02:23:18 PM", datetime(2026, 5, 7, 14, 23, 18)),
+        # NULL / empty → None
+        (None, None),
+        ("", None),
+        ("  ", None),
+        # Garbage → None (and a warning, asserted in caplog elsewhere)
+        ("not a date", None),
+    ])
+    def test_handles_all_formats(self, raw, expected):
+        assert parse_wbatngl_date(raw) == expected
