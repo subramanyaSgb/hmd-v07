@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
-import { Clock, CheckCircle2, AlertCircle, Truck, Play, History, Activity, AlertTriangle, XCircle, Zap, TrendingUp, Timer, ChevronRight, MapPin, Search, Filter, ArrowRight, Loader2, ChevronDown, ChevronUp, PlusCircle, Pencil, Trash2, CheckSquare, Square, X, RefreshCw, Download, FileText, FileSpreadsheet, Mail } from 'lucide-react'
+import { Clock, CheckCircle2, AlertCircle, Truck, Play, History, Activity, AlertTriangle, XCircle, Zap, TrendingUp, Timer, ChevronRight, MapPin, Search, Filter, ArrowRight, Loader2, ChevronDown, ChevronUp, PlusCircle, Pencil, Trash2, CheckSquare, Square, X, RefreshCw, Download, FileText, FileSpreadsheet, Mail, Factory } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { useNotification } from '../context/NotificationContext'
@@ -12,6 +12,7 @@ import CustomSelect from '../components/Common/CustomSelect'
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend, ResponsiveContainer } from 'recharts'
 import IncomingTorpedoes from '../components/IncomingTorpedoes'
 import WeighbridgeModal from '../components/WeighbridgeModal'
+import JswTripsTab from '../components/JswTripsTab'
 
 const LIVE_OPS_STATUS_CONFIG = {
     on_track: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)', label: 'On Track', icon: CheckCircle2 },
@@ -198,6 +199,12 @@ const TripManagement = () => {
                         <History size={14} />
                         HISTORY
                     </button>
+                    {(user.role === 'admin' || user.role === 'trs') && (
+                        <button className={`tab-btn ${activeTab === 'jsw' ? 'active' : ''}`} onClick={() => setActiveTab('jsw')}>
+                            <Factory size={14} />
+                            JSW
+                        </button>
+                    )}
                 </div>
             ),
             forceLeftTitle: true
@@ -3058,6 +3065,7 @@ const TripManagement = () => {
                 {activeTab === 'dispatch' && renderDispatch()}
                 {activeTab === 'tracking' && renderTracking()}
                 {activeTab === 'history' && renderHistory()}
+                {activeTab === 'jsw' && <JswTripsTab />}
             </main>
 
             <style>{`
