@@ -253,6 +253,12 @@ const Dashboard = () => {
     const [fleetLocations, setFleetLocations] = useState([])
     const [weighbridges, setWeighbridges] = useState([])
     const [loading, setLoading] = useState(true)
+    // Tracks whether /api/fleet/live has returned at least once since this
+    // mount. Without it, navigating away and back left the user staring at
+    // an empty map + "TOTAL 0" counter for ~5 seconds (the setInterval delay)
+    // — looked broken even though the GPS sync was healthy. (SMS4 UX
+    // regression flagged 2026-05-08.)
+    const [fleetLoaded, setFleetLoaded] = useState(false)
     const [isOnline, setIsOnline] = useState(false)
     const [hasCentered, setHasCentered] = useState(false)
     const [hasFittedFleet, setHasFittedFleet] = useState(false)
@@ -332,6 +338,9 @@ const Dashboard = () => {
                     }
                     setFleetLocations(Array.from(byId.values()))
                     setIsOnline(true)
+                    // First successful response — flip the loading pill off.
+                    // Subsequent ticks just update positions without UI flicker.
+                    setFleetLoaded(true)
                 }
             } catch (err) {
                 console.error("Dashboard poll error:", err)
@@ -342,6 +351,10 @@ const Dashboard = () => {
         }
 
         fetchInitialData()
+        // Kick off the first /api/fleet/live request immediately so the user
+        // doesn't stare at an empty map for the full 5-second interval gap
+        // every time they navigate to the Live Tracking page.
+        pollLiveUpdates()
 
         pollInterval = setInterval(pollLiveUpdates, 5000)
 
@@ -464,7 +477,47 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            {showTorpedoLegend && (
+            {showTorpedoLegend && !fleetLoaded && (
+                <div
+                    className="overlay-glass-box"
+                    style={{
+                        position: 'absolute',
+                        bottom: '24px',
+                        left: '24px',
+                        zIndex: 1000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        pointerEvents: 'auto',
+                        padding: '12px 18px',
+                    }}
+                    aria-label="Locating torpedoes"
+                    aria-live="polite"
+                >
+                    <div
+                        style={{
+                            width: '14px', height: '14px',
+                            border: '2px solid hsl(var(--border-color))',
+                            borderTopColor: 'hsl(var(--primary))',
+                            borderRadius: '50%',
+                            animation: 'hmd-spin 0.8s linear infinite',
+                        }}
+                    />
+                    <span style={{
+                        fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.06em',
+                        textTransform: 'uppercase', color: 'hsl(var(--text-muted))',
+                    }}>
+                        Locating torpedoes…
+                    </span>
+                    <style>{`
+                        @keyframes hmd-spin {
+                            to { transform: rotate(360deg); }
+                        }
+                    `}</style>
+                </div>
+            )}
+
+            {showTorpedoLegend && fleetLoaded && (
                 <div
                     className="overlay-glass-box"
                     style={{
