@@ -13,10 +13,14 @@ Env vars (read at runtime):
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database.models import WbatnglTripMirror
 from ..logger import logger
+
+
+_WATERMARK_FLOOR = datetime(1970, 1, 1)
 
 
 _DATE_FORMATS = [
@@ -168,3 +172,16 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
     db.execute(stmt)
     db.commit()
     return len(rows)
+
+
+def watermark_for_source(db: Session, source_table: str) -> datetime:
+    """
+    Return MAX(updated_date) for the given source_table, or the epoch floor
+    if the mirror has no rows for that source yet (used as the WHERE > value
+    in the next incremental pull).
+    """
+    result = db.execute(
+        select(func.max(WbatnglTripMirror.updated_date))
+        .where(WbatnglTripMirror.source_table == source_table)
+    ).scalar()
+    return result or _WATERMARK_FLOOR

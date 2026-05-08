@@ -133,3 +133,36 @@ class TestUpsertRows:
     def test_empty_input_returns_zero(self, db_session: Session):
         assert upsert_rows(db_session, []) == 0
         assert db_session.query(WbatnglTripMirror).count() == 0
+
+
+from backend.utils.wbatngl_trip_sync import watermark_for_source
+
+
+class TestWatermark:
+    def test_no_rows_returns_default_floor(self, db_session: Session):
+        wm = watermark_for_source(db_session, 'BF3."WB_TRANS_DATA_ITRO"')
+        # Default floor when mirror is empty: epoch-ish (a fixed sentinel)
+        assert wm == datetime(1970, 1, 1)
+
+    def test_returns_max_updated_date_for_that_source(
+            self, db_session: Session):
+        rows = [row_to_mirror_dict(r, BF3_COLS,
+                                    'BF3."WB_TRANS_DATA_ITRO"')
+                for r in BF3_SAMPLE if r[1] != "OTL 23"]
+        upsert_rows(db_session, rows)
+
+        wm = watermark_for_source(db_session, 'BF3."WB_TRANS_DATA_ITRO"')
+        assert wm == datetime(2026, 5, 7, 14, 59, 33)   # row 5
+
+    def test_isolates_by_source_table(self, db_session: Session):
+        # Only BF5-tagged rows should affect BF5 watermark
+        rows = [row_to_mirror_dict(r, BF3_COLS,
+                                    'BF5."ZWB_TRANSACTION_DATA_ITRO_B"')
+                for r in BF3_SAMPLE[:1]]
+        upsert_rows(db_session, rows)
+        bf5_wm = watermark_for_source(
+            db_session, 'BF5."ZWB_TRANSACTION_DATA_ITRO_B"')
+        bf3_wm = watermark_for_source(
+            db_session, 'BF3."WB_TRANS_DATA_ITRO"')
+        assert bf5_wm == datetime(2026, 5, 7, 9, 26, 13)
+        assert bf3_wm == datetime(1970, 1, 1)
