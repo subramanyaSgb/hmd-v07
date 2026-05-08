@@ -24,7 +24,7 @@ Hot Metal Distribution (HMD) — logistics system for tracking molten iron trans
 - **Frontend**: React 19 + Vite 7, React Router v7, TypeScript (incremental migration — `.ts`/`.tsx` alongside `.jsx`)
 - **Backend**: FastAPI + uvicorn, PostgreSQL via SQLAlchemy ORM, Alembic migrations
 - **Auth**: JWT (python-jose), bcrypt password hashing — **local auth only** (no MFA/OAuth)
-- **Environment**: Conda for Python (`hmd_env`), npm for frontend
+- **Environment**: Python venv at `./.venv/` (gitignored, bootstrapped by `app.bat`), npm for frontend
 - **Charts**: Recharts
 - **PDF Export**: jsPDF + jspdf-autotable
 - **Cache**: Redis optional, in-memory ThreadSafeCache fallback
@@ -39,9 +39,16 @@ app.bat      # Interactive menu — start/stop all services, health check
 ```
 
 ### Backend
+Python environment is a venv at `./.venv/` (gitignored). First-time setup:
 ```bash
-conda activate hmd_env
+python -m venv .venv             # bootstrap (Python 3.10+ on PATH)
+.venv\Scripts\activate.bat       # Windows cmd
+# OR  source .venv/bin/activate  # POSIX
 pip install -r backend/requirements.txt
+```
+Daily use:
+```bash
+.venv\Scripts\activate.bat
 uvicorn backend.main:app --reload --port 8000
 ```
 
@@ -56,9 +63,9 @@ npm run lint     # ESLint check
 
 ### Testing
 ```bash
-conda activate hmd_env
+.venv\Scripts\activate.bat       # Windows cmd  (or source .venv/bin/activate on POSIX)
 
-# Run all tests (~187 test functions across 10 files)
+# Run all tests (~235 test functions)
 pytest backend/
 
 # Verbose output
@@ -82,7 +89,7 @@ pytest backend/tests/test_maintenance.py      # Maintenance scheduling
 
 ### Database Migrations (Alembic)
 ```bash
-conda activate hmd_env
+.venv\Scripts\activate.bat       # Windows cmd  (or source .venv/bin/activate on POSIX)
 cd backend
 
 python -m alembic current                                    # Current version

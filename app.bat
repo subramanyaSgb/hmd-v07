@@ -15,7 +15,10 @@ if "%~1"=="--from-error" (
 :: ============================================
 :: Configuration
 :: ============================================
-set ENV_NAME=hmd_env
+:: Python venv directory (was conda env "hmd_env" before May 2026 — see
+:: changes_tracker.md). Lives at the repo root, gitignored. To recreate
+:: from scratch: `rmdir /s /q .venv` then re-run this script.
+set VENV_DIR=.venv
 set PYTHON_VERSION=3.10
 set BACKEND_PORT=8000
 set FRONTEND_PORT=5173
@@ -533,12 +536,12 @@ echo.
 echo   [STEP 1/6] Validating Prerequisites
 echo   ------------------------------------------------------------------------
 
-where conda >nul 2>&1
+where python >nul 2>&1
 if errorlevel 1 (
-    echo     [X] Conda not found. Please install Anaconda/Miniconda.
+    echo     [X] Python not found on PATH. Install Python %PYTHON_VERSION%+ from https://www.python.org/downloads/
     goto :error
 )
-echo     [OK] Conda found
+for /f "tokens=*" %%i in ('python --version') do echo     [OK] %%i
 
 if "%CHOICE%"=="2" goto :skip_node_check
 
@@ -557,8 +560,8 @@ if errorlevel 1 (
 echo     [OK] npm found
 
 :skip_node_check
-:: Skip conda for WhatsApp-only start
-if "%CHOICE%"=="4" goto :skip_conda
+:: Skip venv setup for WhatsApp-only start (no Python deps needed there)
+if "%CHOICE%"=="4" goto :skip_venv
 
 :: Step 2: Check Port Availability
 echo.
@@ -572,34 +575,47 @@ if "%CHOICE%"=="2" call :check_port %BACKEND_PORT% Backend
 if "%CHOICE%"=="3" call :check_port %FRONTEND_PORT% Frontend
 if "%CHOICE%"=="4" call :check_port %WHATSAPP_PORT% WhatsApp
 
-:: Step 3: Setup Conda Environment
-if "%CHOICE%"=="3" goto :skip_conda
+:: Step 3: Setup Python venv
+if "%CHOICE%"=="3" goto :skip_venv
 
 echo.
-echo   [STEP 3/6] Setting Up Python Environment
+echo   [STEP 3/6] Setting Up Python Environment (venv)
 echo   ------------------------------------------------------------------------
 
-call conda env list | findstr /C:"%ENV_NAME%" > nul
-if not errorlevel 1 goto :conda_env_exists
-echo     Creating environment %ENV_NAME%...
-call conda create -y -n %ENV_NAME% python=%PYTHON_VERSION% > "%LOG_DIR%\conda_create.log" 2>&1
+:: Make sure system python is available before we try to bootstrap the venv.
+where python > nul 2>&1
 if errorlevel 1 (
-    echo     [X] Failed to create conda environment
-    echo     [!] Error details:
-    type "%LOG_DIR%\conda_create.log" 2>nul | findstr /i "error ERROR CondaError"
+    echo     [X] python not found on PATH.
+    echo     [!] Install Python %PYTHON_VERSION% or newer from https://www.python.org/downloads/
+    echo     [!] then re-run this script.
     goto :error
 )
-echo     [OK] Environment created
-goto :conda_env_done
-:conda_env_exists
-echo     [OK] Environment %ENV_NAME% exists
-:conda_env_done
+
+if exist "%VENV_DIR%\Scripts\activate.bat" goto :venv_exists
+echo     Creating virtual environment in %VENV_DIR%...
+python -m venv %VENV_DIR% > "%LOG_DIR%\venv_create.log" 2>&1
+if errorlevel 1 (
+    echo     [X] Failed to create venv
+    echo     [!] Error details:
+    type "%LOG_DIR%\venv_create.log" 2>nul
+    goto :error
+)
+echo     [OK] venv created at %VENV_DIR%
+goto :venv_done
+:venv_exists
+echo     [OK] venv %VENV_DIR% exists
+:venv_done
 
 echo     Activating environment...
-call conda activate %ENV_NAME%
+call "%VENV_DIR%\Scripts\activate.bat"
+if errorlevel 1 (
+    echo     [X] Failed to activate venv
+    goto :error
+)
 
 echo     Installing/updating backend dependencies...
-pip install -r backend\requirements.txt -q > "%LOG_DIR%\pip_install.log" 2>&1
+python -m pip install --upgrade pip -q > "%LOG_DIR%\pip_install.log" 2>&1
+pip install -r backend\requirements.txt -q >> "%LOG_DIR%\pip_install.log" 2>&1
 if errorlevel 1 goto :pip_had_issues
 echo     [OK] Dependencies installed
 goto :pip_done
@@ -610,7 +626,7 @@ type "%LOG_DIR%\pip_install.log" 2>nul | findstr /i "error ERROR Error"
 call :press_any_key
 :pip_done
 
-:skip_conda
+:skip_venv
 
 :: Step 4: Setup Frontend Dependencies
 if "%CHOICE%"=="2" goto :skip_frontend_deps
@@ -700,7 +716,7 @@ echo     [^>^>] Starting all services in background (hidden windows)...
 echo.
 
 :: Start services minimized - user won't see terminal windows
-start /MIN "HMD Backend" cmd /k "title HMD Backend && conda activate %ENV_NAME% && uvicorn backend.main:app --reload --port %BACKEND_PORT%"
+start /MIN "HMD Backend" cmd /k "title HMD Backend && call %VENV_DIR%\Scripts\activate.bat && uvicorn backend.main:app --reload --port %BACKEND_PORT%"
 
 start /MIN "HMD Frontend" cmd /k "title HMD Frontend && cd frontend && npm run dev"
 
@@ -711,7 +727,7 @@ goto :wait_and_open
 
 :start_backend_app
 echo     [^>^>] Starting Backend on http://localhost:%BACKEND_PORT%
-start /MIN "HMD Backend" cmd /k "title HMD Backend && conda activate %ENV_NAME% && uvicorn backend.main:app --reload --port %BACKEND_PORT%"
+start /MIN "HMD Backend" cmd /k "title HMD Backend && call %VENV_DIR%\Scripts\activate.bat && uvicorn backend.main:app --reload --port %BACKEND_PORT%"
 goto :wait_backend
 
 :start_frontend_app

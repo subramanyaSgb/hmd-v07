@@ -6,7 +6,7 @@ idle torpedoes. Keeps only the row with the highest `id` per fleet_id.
 Run on the SMS4 PC:
 
     cd <HMD root>
-    conda activate hmd_test          # whichever env has the deps
+    .venv\Scripts\activate.bat       # the project venv (created by app.bat)
     python -m backend.utils.cleanup_fleet_location_dupes
 
 Output is a one-line summary:
