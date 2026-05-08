@@ -293,3 +293,60 @@ async def jsw_dashboard(
     except Exception:
         logger.exception("JSW dashboard: cache set failed (non-fatal)")
     return payload
+
+
+# ───────────────────────── /api/jsw/sync-now ──────────────────────
+#
+# Module-level in-flight guard so a user mashing the Refresh button
+# doesn't fan out into N parallel Oracle round-trips. The 60s scheduler
+# tick still runs independently — this just prevents concurrent manual
+# triggers from one user. Cleared in the finally block below.
+_sync_in_flight = False
+
+
+@router.post("/api/jsw/sync-now")
+async def jsw_sync_now(
+    current_user: User = Depends(get_current_user_required),
+):
+    """
+    Manual trigger for the WBATNGL trip-mirror sync. Runs the same
+    `wbatngl_trip_sync.run_once()` job that APScheduler runs every 60s,
+    off the event-loop thread so the Oracle round-trip doesn't block
+    other requests.
+
+    Wired to the JSW tab's Refresh button so users can pull fresh data
+    on demand instead of waiting up to 60s for the next tick. Auth is
+    `get_current_user_required` (any authenticated role) to mirror the
+    read-side auth on /api/jsw/trips — no admin gating, since the read
+    endpoints are already open to all authenticated users.
+
+    Returns the same stats dict as `run_once`: fetched/upserted/
+    skipped_non_torpedo/errors. If a sync triggered by *this* same
+    process is already in flight, returns `{"in_flight": true}` and
+    skips firing a duplicate (the in-flight job will commit shortly,
+    then a fresh GET /api/jsw/trips picks up the result).
+    """
+    global _sync_in_flight
+    import asyncio
+    from ..utils.wbatngl_trip_sync import run_once
+
+    if _sync_in_flight:
+        return {"success": True, "in_flight": True}
+
+    _sync_in_flight = True
+    try:
+        logger.info(
+            f"WBATNGL manual trip sync requested by {current_user.username}"
+        )
+        stats = await asyncio.to_thread(run_once)
+        # Bust dashboard cache so the next /api/jsw/dashboard read
+        # recomputes from the freshly-synced mirror state.
+        try:
+            fleet_cache.invalidate_pattern(CACHE_KEY_DASHBOARD)
+        except Exception:
+            logger.exception(
+                "JSW sync-now: cache invalidation failed (non-fatal)"
+            )
+        return {"success": True, "in_flight": False, **(stats or {})}
+    finally:
+        _sync_in_flight = False

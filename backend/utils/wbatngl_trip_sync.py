@@ -213,7 +213,9 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
     """
     UPSERT a batch of mirror dicts into wbatngl_trip_mirror.
     Conflict target: trip_id (unique constraint).
-    Update columns: everything except id, trip_id, synced_at.
+    Update columns: everything except id and trip_id; `synced_at` is
+    bumped to NOW() on every upsert (insert *or* update) so the UI's
+    "last sync" label tracks every sync run, not just new-trip insertions.
 
     Production runs on PostgreSQL; tests run on SQLite. Both dialects
     expose `on_conflict_do_update(index_elements=...)` with identical
@@ -227,6 +229,15 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
         (3598 rows × 22 cols = ~79 k parameters → exceeded the limit on
         SMS4 2026-05-08, masked as a generic DataError).
       - Commits once at the end so all chunks land atomically.
+
+    Why synced_at-on-update matters (changes_tracker.md #52):
+      The previous version excluded synced_at from the conflict-update set,
+      so MAX(synced_at) only advanced when a brand-new trip_id was INSERTED.
+      During quiet operations periods (no new trips, only revisions to
+      existing ones) the JSW tab's "last sync HH:MM" label looked frozen
+      for hours even though the 60s tick was firing fine. Stamping
+      synced_at=NOW() on every upsert makes the label reflect actual sync
+      activity.
 
     Returns count of rows actually persisted (post-dedup), not input length.
     """
@@ -254,9 +265,15 @@ def upsert_rows(db: Session, rows: list[dict]) -> int:
     for i in range(0, len(deduped), UPSERT_CHUNK_SIZE):
         chunk = deduped[i:i + UPSERT_CHUNK_SIZE]
         stmt = dialect_insert(WbatnglTripMirror).values(chunk)
+        # Build the conflict-update set: copy every excluded column…
+        set_dict = {col: stmt.excluded[col] for col in update_cols}
+        # …then explicitly stamp synced_at to NOW() so it advances even
+        # when a row is re-upserted with no other changes. func.now()
+        # compiles to NOW() on PG and CURRENT_TIMESTAMP on SQLite.
+        set_dict["synced_at"] = func.now()
         stmt = stmt.on_conflict_do_update(
             index_elements=["trip_id"],
-            set_={col: stmt.excluded[col] for col in update_cols},
+            set_=set_dict,
         )
         db.execute(stmt)
         persisted += len(chunk)

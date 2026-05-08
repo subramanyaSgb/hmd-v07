@@ -61,6 +61,7 @@ const JswTripsTab = () => {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [refreshSeq, setRefreshSeq] = useState(0)
+    const [syncing, setSyncing] = useState(false)
 
     const fleetIds = Array.from(new Set([
         'all',
@@ -87,6 +88,27 @@ const JswTripsTab = () => {
             setLoading(false)
         }
     }, [timeWindow, page, pageSize, filters, q])
+
+    // Manual refresh: trigger a JSW pull on the backend, then re-read the
+    // mirror. Without the sync-now POST, the Refresh button could only
+    // surface whatever the 60s tick had already written — confusing when
+    // operators expect Refresh to mean "go look at JSW *now*".
+    const handleRefresh = useCallback(async () => {
+        if (syncing) return
+        setSyncing(true)
+        try {
+            await api.post('/api/jsw/sync-now', {})
+        } catch (e) {
+            // Soft-fail: even if the sync trigger errors (network blip,
+            // Oracle unreachable), we still want to re-read the mirror so
+            // the UI shows whatever the latest tick already wrote.
+
+            console.warn('JSW sync-now failed:', e?.message || e)
+        } finally {
+            setRefreshSeq(s => s + 1)
+            setSyncing(false)
+        }
+    }, [syncing])
 
     // Reset to page 1 whenever filters or window change
     useEffect(() => { setPage(1) }, [timeWindow, filters, q])
@@ -159,22 +181,25 @@ const JswTripsTab = () => {
                         ))}
                     </select>
 
-                    {/* Refresh button */}
+                    {/* Refresh button — pulls fresh data from JSW WBATNGL,
+                        then re-reads the local mirror */}
                     <button
-                        onClick={() => setRefreshSeq(s => s + 1)}
-                        title="Refresh now"
+                        onClick={handleRefresh}
+                        disabled={syncing}
+                        title={syncing ? 'Syncing from JSW…' : 'Pull fresh data from JSW WBATNGL'}
                         style={{
                             padding: '6px 10px',
                             border: '1px solid hsl(var(--border-color))',
                             borderRadius: '8px',
                             background: 'transparent',
-                            cursor: 'pointer',
+                            cursor: syncing ? 'wait' : 'pointer',
                             color: 'hsl(var(--text-muted))',
                             display: 'flex', alignItems: 'center', gap: '4px',
                             fontSize: '12px',
+                            opacity: syncing ? 0.6 : 1,
                         }}
                     >
-                        <RefreshCw size={12} /> Refresh
+                        <RefreshCw size={12} /> {syncing ? 'Syncing…' : 'Refresh'}
                     </button>
 
                     <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'hsl(var(--text-muted))' }}>
