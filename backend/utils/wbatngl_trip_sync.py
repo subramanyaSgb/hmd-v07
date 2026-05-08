@@ -11,6 +11,7 @@ Env vars (read at runtime):
     ORACLE_INSTANT_CLIENT_DIR
 """
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -19,6 +20,14 @@ from sqlalchemy.orm import Session
 
 from ..database.models import WbatnglTripMirror
 from ..logger import logger
+
+
+# JSW WBATNGL emits some VARCHAR2 dates with a malformed pattern:
+# "MM/DD/YYYY HH:MM:SS AM/PM" where HH is in **24-hour clock** (00-23) and
+# the AM/PM suffix is always wrong/redundant. Examples seen on SMS4
+# 2026-05-08: '05/07/2026 23:00:21 PM', '04/24/2026 00:03:55 AM',
+# '05/01/2026 19:30:25 PM'. strptime's %I needs 01-12 so it rejects them.
+_TRAILING_AMPM = re.compile(r"\s+(AM|PM)\s*$", re.IGNORECASE)
 
 
 _WATERMARK_FLOOR = datetime(1970, 1, 1)
@@ -67,6 +76,14 @@ def parse_wbatngl_date(raw: Optional[str | datetime]) -> Optional[datetime]:
     Parse a WBATNGL date that might already be a datetime, or a VARCHAR2
     in one of the formats JSW uses. Returns None for empty/garbage input
     (with a warning log) instead of raising — never crash the sync batch.
+
+    Format ladder:
+      1. Already a datetime → pass through.
+      2. Try each format in _DATE_FORMATS in order (well-formed cases).
+      3. Fallback for the JSW-malformed "24h with redundant AM/PM" pattern:
+         strip the trailing AM/PM, retry as a 24h format. This catches
+         strings like '05/07/2026 23:00:21 PM' that strptime rejects
+         because %I requires hour 01-12.
     """
     if raw is None:
         return None
@@ -80,6 +97,16 @@ def parse_wbatngl_date(raw: Optional[str | datetime]) -> Optional[datetime]:
             return datetime.strptime(s, fmt)
         except ValueError:
             continue
+
+    # JSW malformed-AM/PM fallback (see _TRAILING_AMPM module docstring).
+    cleaned = _TRAILING_AMPM.sub("", s)
+    if cleaned != s:
+        for fmt in ("%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S"):
+            try:
+                return datetime.strptime(cleaned, fmt)
+            except ValueError:
+                continue
+
     logger.warning(f"parse_wbatngl_date: unparseable value {s!r}")
     return None
 

@@ -30,9 +30,18 @@ class TestParseWbatnglDate:
         (datetime(2026, 5, 7, 5, 10, 36), datetime(2026, 5, 7, 5, 10, 36)),
         # DD/MM/YYYY HH:MM:SS — FIRST_TARE_TIME format in some tables
         ("07/05/2026 11:59:06", datetime(2026, 5, 7, 11, 59, 6)),
-        # MM/DD/YYYY HH:MM:SS AM/PM — RECEIVED_DATE format
+        # MM/DD/YYYY HH:MM:SS AM/PM — RECEIVED_DATE proper 12h form
         ("05/07/2026 11:03:20 AM", datetime(2026, 5, 7, 11, 3, 20)),
         ("05/07/2026 02:23:18 PM", datetime(2026, 5, 7, 14, 23, 18)),
+        # JSW-malformed: 24h clock with bogus AM/PM suffix glued on.
+        # Observed on SMS4 backfill 2026-05-08; strptime's %I rejects
+        # hours 0/13-23 so we strip the suffix and retry as 24h.
+        ("05/07/2026 23:00:21 PM", datetime(2026, 5, 7, 23, 0, 21)),
+        ("04/24/2026 00:03:55 AM", datetime(2026, 4, 24, 0, 3, 55)),
+        ("05/01/2026 19:30:25 PM", datetime(2026, 5, 1, 19, 30, 25)),
+        ("05/04/2026 13:49:42 PM", datetime(2026, 5, 4, 13, 49, 42)),
+        # Edge: lowercase/mixed-case AM/PM should also be stripped.
+        ("05/07/2026 23:00:21 pm", datetime(2026, 5, 7, 23, 0, 21)),
         # NULL / empty → None
         (None, None),
         ("", None),
