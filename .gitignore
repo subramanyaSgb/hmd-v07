@@ -65,6 +65,12 @@ logs/
 # Claude / tooling local state
 .claude/settings.local.json
 .gitnexus/
+.code-review-graph/
+
+# Local test output / scratch
+backend/tests/res.txt
+backend/tests/*.tmp.txt
+backend/tests/*.local.txt
 
 # Misc
 *.bak
