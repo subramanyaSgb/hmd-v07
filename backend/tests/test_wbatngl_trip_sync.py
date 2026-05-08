@@ -208,3 +208,69 @@ class TestPullAndUpsertFromSource:
         )
         assert stats == {"fetched": 0, "upserted": 0,
                          "skipped_non_torpedo": 0, "errors": 0}
+
+
+from backend.utils.wbatngl_trip_sync import (
+    run_once, SOURCE_TABLES, CACHE_KEY_JSW_DASHBOARD,
+)
+from backend.utils.cache import fleet_cache as _fleet_cache
+
+
+class TestRunOnce:
+    def test_source_tables_constant_is_correct(self):
+        # Locked-in audit string matches what writes into mirror.source_table.
+        assert SOURCE_TABLES == [
+            'BF3."WB_TRANS_DATA_ITRO"',
+            'BF5."ZWB_TRANSACTION_DATA_ITRO_B"',
+        ]
+
+    def test_returns_error_dict_when_oracle_unreachable(
+            self, db_session: Session, monkeypatch):
+        # Force connect failure (no password set ⇒ RuntimeError).
+        monkeypatch.delenv("WBATNGL_PASSWORD", raising=False)
+        result = run_once()
+        assert "error" in result
+        assert "WBATNGL_PASSWORD" in result["error"]
+
+    def test_iterates_every_source_table_and_invalidates_cache(
+            self, db_session: Session, monkeypatch):
+        # Mock _connect_oracle to return a fake connection whose cursor returns
+        # BF3_SAMPLE for the first source and an empty list for the second.
+        import sys
+        from backend.utils import wbatngl_trip_sync as sync_mod
+        # backend.database/__init__.py re-exports `engine` (the SQLAlchemy
+        # Engine instance) as backend.database.engine, shadowing the submodule
+        # attribute. Pull the actual module from sys.modules.
+        engine_mod = sys.modules["backend.database.engine"]
+
+        cursor = MagicMock()
+        cursor.description = [(c,) for c in BF3_COLS]
+        # alternate fetchall return per source-table call
+        cursor.fetchall.side_effect = [BF3_SAMPLE, []]
+
+        fake_conn = MagicMock()
+        fake_conn.cursor.return_value = cursor
+
+        monkeypatch.setattr(sync_mod, "_connect_oracle", lambda: fake_conn)
+        # Force run_once to bind SessionLocal to our test session's engine so
+        # commits land in the same in-memory SQLite database the fixture used.
+        from backend.tests.conftest import TestingSessionLocal
+        monkeypatch.setattr(engine_mod, "SessionLocal", TestingSessionLocal)
+
+        # Seed cache so we can prove invalidation runs.
+        _fleet_cache.set(f"{CACHE_KEY_JSW_DASHBOARD}:today", {"x": 1}, ttl=60)
+        assert _fleet_cache.get(f"{CACHE_KEY_JSW_DASHBOARD}:today") is not None
+
+        total = run_once()
+
+        # Both source tables iterated; first yielded 6 rows (5 upserted).
+        assert total["fetched"] == 6
+        assert total["upserted"] == 5
+        assert total["skipped_non_torpedo"] == 1
+        assert total["errors"] == 0
+
+        # Cursor was invoked twice — once per source table.
+        assert cursor.execute.call_count == 2
+
+        # Cache key was invalidated.
+        assert _fleet_cache.get(f"{CACHE_KEY_JSW_DASHBOARD}:today") is None

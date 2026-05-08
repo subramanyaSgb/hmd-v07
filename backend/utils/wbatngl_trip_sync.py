@@ -10,7 +10,8 @@ Env vars (read at runtime):
     WBATNGL_HOST/PORT/USER/PASSWORD/SERVICE   shared with capacity sync
     ORACLE_INSTANT_CLIENT_DIR
 """
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -21,6 +22,16 @@ from ..logger import logger
 
 
 _WATERMARK_FLOOR = datetime(1970, 1, 1)
+
+
+SOURCE_TABLES = [
+    'BF3."WB_TRANS_DATA_ITRO"',
+    'BF5."ZWB_TRANSACTION_DATA_ITRO_B"',
+]
+
+CACHE_KEY_JSW_DASHBOARD = "jsw_dashboard"
+
+_ORACLE_THICK_INITIALIZED = False
 
 
 _DATE_FORMATS = [
@@ -233,3 +244,126 @@ def pull_and_upsert_from_source(
 
     stats["upserted"] = upsert_rows(db, mirror_rows)
     return stats
+
+
+def _ensure_thick_mode(client_dir: str) -> bool:
+    """Initialize oracledb thick mode (idempotent). Returns True on success."""
+    global _ORACLE_THICK_INITIALIZED
+    if _ORACLE_THICK_INITIALIZED:
+        return True
+    if not os.path.isdir(client_dir):
+        logger.warning(f"WBATNGL: Oracle Instant Client not found at {client_dir}")
+        return False
+    try:
+        import oracledb
+        oracledb.init_oracle_client(lib_dir=client_dir)
+        _ORACLE_THICK_INITIALIZED = True
+        return True
+    except Exception as e:
+        # Already-initialized or already-using-thick is benign
+        if "DPI-1047" in str(e) or "already" in str(e).lower():
+            _ORACLE_THICK_INITIALIZED = True
+            return True
+        logger.warning(f"WBATNGL: thick-mode init failed: {e}")
+        return False
+
+
+def _connect_oracle():
+    """Open a WBATNGL Oracle connection. Caller is responsible for closing."""
+    cfg = {
+        "host":     os.getenv("WBATNGL_HOST", "10.10.1.67"),
+        "port":     int(os.getenv("WBATNGL_PORT", "1522")),
+        "user":     os.getenv("WBATNGL_USER", "ITROSYSP"),
+        "password": os.getenv("WBATNGL_PASSWORD", ""),
+        "service":  os.getenv("WBATNGL_SERVICE", "WBATNGL"),
+        "client":   os.getenv("ORACLE_INSTANT_CLIENT_DIR",
+                              r"C:\oracle\instantclient_23_0"),
+    }
+    # Fail-fast on missing creds before we even try to load the oracledb DLL —
+    # makes the unconfigured-prod and no-oracledb-test cases produce the same
+    # clean error.
+    if not cfg["password"]:
+        raise RuntimeError("WBATNGL_PASSWORD not set")
+    import oracledb
+    _ensure_thick_mode(cfg["client"])
+    return oracledb.connect(
+        user=cfg["user"], password=cfg["password"],
+        dsn=f"{cfg['host']}:{cfg['port']}/{cfg['service']}",
+    )
+
+
+def run_once(backfill_days: int = 0) -> dict:
+    """
+    One scheduler tick. Iterates every entry in SOURCE_TABLES, pulls deltas
+    since the per-source watermark (or NOW - backfill_days when invoked
+    via CLI for initial backfill), UPSERTs into wbatngl_trip_mirror, then
+    invalidates the JSW dashboard cache so the next /api/jsw/dashboard
+    request recomputes from fresh data.
+
+    Returns aggregated stats across all source tables, or
+    {"error": "..."} if Oracle was unreachable.
+    """
+    from ..database.engine import SessionLocal
+    from .cache import fleet_cache
+
+    logger.info("WBATNGL trip sync: starting")
+    total = {"fetched": 0, "upserted": 0,
+             "skipped_non_torpedo": 0, "errors": 0}
+
+    try:
+        conn = _connect_oracle()
+    except Exception as e:
+        logger.exception(f"WBATNGL connect failed: {e}")
+        return {"error": str(e)}
+
+    db = SessionLocal()
+    try:
+        cursor = conn.cursor()
+        for src in SOURCE_TABLES:
+            if backfill_days > 0:
+                wm = datetime.utcnow() - timedelta(days=backfill_days)
+            else:
+                wm = watermark_for_source(db, src)
+
+            try:
+                stats = pull_and_upsert_from_source(db, cursor, src, wm)
+            except Exception as e:
+                logger.exception(f"WBATNGL source {src} failed: {e}")
+                total["errors"] += 1
+                continue
+            for k in total:
+                total[k] += stats.get(k, 0)
+            logger.info(
+                f"WBATNGL {src}: fetched={stats['fetched']} "
+                f"upserted={stats['upserted']} "
+                f"skipped={stats['skipped_non_torpedo']} "
+                f"watermark_was={wm}"
+            )
+
+        # Bust the JSW dashboard cache for every time_window so the next
+        # /api/jsw/dashboard call recomputes from the fresh mirror state.
+        try:
+            fleet_cache.invalidate_pattern(CACHE_KEY_JSW_DASHBOARD)
+        except Exception:
+            logger.exception("WBATNGL: cache invalidation failed (non-fatal)")
+
+        logger.info(
+            f"WBATNGL trip sync OK: fetched={total['fetched']} "
+            f"upserted={total['upserted']} errors={total['errors']}"
+        )
+    finally:
+        db.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return total
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser(description="WBATNGL trip mirror sync")
+    p.add_argument("--backfill-days", type=int, default=0,
+                   help="If >0, ignore watermark and pull last N days")
+    args = p.parse_args()
+    print(run_once(backfill_days=args.backfill_days))
