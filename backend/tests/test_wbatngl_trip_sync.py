@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from backend.utils.wbatngl_trip_sync import normalize_ladleno, parse_wbatngl_date
+from backend.utils.wbatngl_trip_sync import _zero_to_null
 
 
 class TestNormalizeLadleno:
@@ -41,3 +42,18 @@ class TestParseWbatnglDate:
     ])
     def test_handles_all_formats(self, raw, expected):
         assert parse_wbatngl_date(raw) == expected
+
+
+class TestZeroToNull:
+    @pytest.mark.parametrize("raw, expected", [
+        (1500.42, 1500.42),
+        (0.0, None),
+        (0, None),
+        (None, None),
+        (-0.0, None),
+        (1e-10, None),    # treat near-zero as not-measured
+        (0.001, 0.001),
+        (-1.0, None),     # negative chemistry can't be real
+    ])
+    def test_treats_zero_and_below_as_unmeasured(self, raw, expected):
+        assert _zero_to_null(raw) == expected

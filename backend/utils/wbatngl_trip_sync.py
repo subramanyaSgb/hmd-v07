@@ -64,3 +64,20 @@ def parse_wbatngl_date(raw: Optional[str | datetime]) -> Optional[datetime]:
             continue
     logger.warning(f"parse_wbatngl_date: unparseable value {s!r}")
     return None
+
+
+def _zero_to_null(value: Optional[float | int]) -> Optional[float]:
+    """
+    WBATNGL stores TEMP=0 / S_L=0 / SI_L=0 to mean "not measured." Storing
+    those as 0 in the mirror would bias chemistry averages downward, so we
+    coerce to None. Treats any value ≤ 1e-9 (and negatives) as unmeasured.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v <= 1e-9:
+        return None
+    return v
