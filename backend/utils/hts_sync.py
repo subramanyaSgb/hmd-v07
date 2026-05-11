@@ -30,3 +30,28 @@ def normalize_torpedo_no(raw: Optional[str]) -> Optional[str]:
     if not s.isdigit():
         return None
     return f"TLC-{int(s):02d}"
+
+
+def row_to_mirror_dict(row: tuple, cols: list) -> Optional[dict]:
+    """
+    Map an Oracle row tuple to a dict shaped for hts_heat_mirror UPSERT.
+    Returns None if heat_no (the natural PK) is missing.
+    """
+    r = dict(zip(cols, row))
+    heat_no = r.get("HEAT_NO")
+    if not heat_no:
+        return None
+    raw_torpedo = r.get("TORPEDO_NO")
+    sms_raw = r.get("SMS")
+    return {
+        "heat_no": heat_no,
+        "converter_no": (r.get("CONVERTER_NO") or "").strip() or None,
+        "sms": (str(sms_raw).strip() or None) if sms_raw is not None else None,
+        "torpedo_no": normalize_torpedo_no(raw_torpedo),
+        "torpedo_no_raw": str(raw_torpedo) if raw_torpedo is not None else None,
+        "hotmetal_qty": r.get("HOTMETAL_QTY"),
+        "torpedo_qty": r.get("TORPEDO_QTY"),
+        "torpedo_in_time": r.get("TORPEDO_IN_TIME"),
+        "torpedo_out_time": r.get("TORPEDO_OUT_TIME"),
+        "converter_life": r.get("CONVERTER_LIFE"),
+    }

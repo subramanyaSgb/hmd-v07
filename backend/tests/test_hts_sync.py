@@ -18,3 +18,58 @@ class TestNormalizeTorpedoNo:
     ])
     def test_normalize_handles_all_observed_forms(self, raw, expected):
         assert normalize_torpedo_no(raw) == expected
+
+
+from backend.utils.hts_sync import row_to_mirror_dict
+
+
+HTS_COLS = [
+    "CONVERTER_NO", "HEAT_NO", "HOTMETAL_QTY", "TORPEDO_NO",
+    "TORPEDO_IN_TIME", "TORPEDO_OUT_TIME", "TORPEDO_QTY", "CONVERTER_LIFE",
+]
+
+import datetime as _dt
+SAMPLE_ROW = (
+    "D",
+    "D2030595",
+    126.146,
+    "45",
+    _dt.datetime(2026, 4, 1, 17, 38, 14),
+    _dt.datetime(2026, 4, 1, 18, 14, 3),
+    369.6,
+    354,
+)
+
+
+class TestRowToMirrorDict:
+    def test_typical_row_maps_all_fields(self):
+        d = row_to_mirror_dict(SAMPLE_ROW, HTS_COLS)
+        assert d["heat_no"] == "D2030595"
+        assert d["converter_no"] == "D"
+        assert d["torpedo_no"] == "TLC-45"
+        assert d["torpedo_no_raw"] == "45"
+        assert d["hotmetal_qty"] == 126.146
+        assert d["torpedo_qty"] == 369.6
+        assert d["torpedo_in_time"] == _dt.datetime(2026, 4, 1, 17, 38, 14)
+        assert d["torpedo_out_time"] == _dt.datetime(2026, 4, 1, 18, 14, 3)
+        assert d["converter_life"] == 354
+        assert d.get("sms") is None
+
+    def test_unparseable_torpedo_returns_none_dict(self):
+        bad = list(SAMPLE_ROW)
+        bad[3] = "garbage"
+        d = row_to_mirror_dict(tuple(bad), HTS_COLS)
+        assert d["torpedo_no"] is None
+        assert d["torpedo_no_raw"] == "garbage"
+
+    def test_missing_heat_no_returns_none(self):
+        bad = list(SAMPLE_ROW)
+        bad[1] = None
+        d = row_to_mirror_dict(tuple(bad), HTS_COLS)
+        assert d is None
+
+    def test_sms_column_when_present(self):
+        cols = HTS_COLS + ["SMS"]
+        row = SAMPLE_ROW + ("SMS3",)
+        d = row_to_mirror_dict(row, cols)
+        assert d["sms"] == "SMS3"
