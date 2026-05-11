@@ -73,3 +73,37 @@ class TestRowToMirrorDict:
         row = SAMPLE_ROW + ("SMS3",)
         d = row_to_mirror_dict(row, cols)
         assert d["sms"] == "SMS3"
+
+
+from backend.utils.hts_sync import upsert_rows
+
+
+class TestUpsertRows:
+    def test_insert_new_rows(self, db_session):
+        rows = [row_to_mirror_dict(SAMPLE_ROW, HTS_COLS)]
+        n = upsert_rows(db_session, rows)
+        assert n == 1
+        from backend.database.models import HtsHeatMirror
+        got = db_session.query(HtsHeatMirror).filter_by(heat_no="D2030595").first()
+        assert got is not None
+        assert got.torpedo_no == "TLC-45"
+        assert float(got.hotmetal_qty) == 126.146
+
+    def test_upsert_updates_existing(self, db_session):
+        rows = [row_to_mirror_dict(SAMPLE_ROW, HTS_COLS)]
+        upsert_rows(db_session, rows)
+        modified = list(SAMPLE_ROW)
+        modified[2] = 200.0
+        rows2 = [row_to_mirror_dict(tuple(modified), HTS_COLS)]
+        upsert_rows(db_session, rows2)
+        from backend.database.models import HtsHeatMirror
+        got = db_session.query(HtsHeatMirror).filter_by(heat_no="D2030595").one()
+        assert float(got.hotmetal_qty) == 200.0
+
+    def test_empty_input_is_noop(self, db_session):
+        assert upsert_rows(db_session, []) == 0
+
+    def test_none_rows_are_filtered(self, db_session):
+        rows = [None, row_to_mirror_dict(SAMPLE_ROW, HTS_COLS), None]
+        n = upsert_rows(db_session, rows)
+        assert n == 1

@@ -15,6 +15,14 @@ Env vars (read at runtime):
 """
 from typing import Optional
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from ..database.models import HtsHeatMirror
+from ..logger import logger
+
+UPSERT_CHUNK_SIZE = 500
+
 
 def normalize_torpedo_no(raw: Optional[str]) -> Optional[str]:
     """
@@ -55,3 +63,47 @@ def row_to_mirror_dict(row: tuple, cols: list) -> Optional[dict]:
         "torpedo_out_time": r.get("TORPEDO_OUT_TIME"),
         "converter_life": r.get("CONVERTER_LIFE"),
     }
+
+
+def upsert_rows(db: Session, rows: list) -> int:
+    """
+    UPSERT a batch of mirror dicts into hts_heat_mirror.
+    Conflict target: heat_no (unique).
+    synced_at is bumped to NOW() on every upsert (insert OR update) so
+    the UI's "last sync" label reflects sync activity (see
+    wbatngl_trip_sync.upsert_rows for the same pattern + rationale,
+    changes_tracker entry #52).
+
+    Filters out None values (row_to_mirror_dict returns None for invalid rows).
+    """
+    rows = [r for r in rows if r is not None]
+    if not rows:
+        return 0
+
+    update_cols = [
+        c.name for c in HtsHeatMirror.__table__.columns
+        if c.name not in ("id", "heat_no", "synced_at")
+    ]
+
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    else:
+        raise RuntimeError(f"upsert_rows: unsupported dialect {dialect!r}")
+
+    persisted = 0
+    for i in range(0, len(rows), UPSERT_CHUNK_SIZE):
+        chunk = rows[i:i + UPSERT_CHUNK_SIZE]
+        stmt = dialect_insert(HtsHeatMirror).values(chunk)
+        set_dict = {col: stmt.excluded[col] for col in update_cols}
+        set_dict["synced_at"] = func.now()
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["heat_no"],
+            set_=set_dict,
+        )
+        db.execute(stmt)
+        persisted += len(chunk)
+    db.commit()
+    return persisted
