@@ -345,6 +345,35 @@ def schedule_wbatngl_trip_sync():
     logger.info(f"WBATNGL trip sync scheduled every {interval_sec}s")
 
 
+def schedule_hts_sync():
+    """
+    APScheduler hook for HTS sync. Pulls heat-pour rows from
+    HTS.VW_HTS_HOTMETAL_DATA every HTS_SYNC_INTERVAL_SECONDS into the local
+    hts_heat_mirror table. Gated by HTS_SYNC_ENABLED=true.
+    """
+    if os.getenv("HTS_SYNC_ENABLED", "false").lower() != "true":
+        logger.info("HTS sync disabled (set HTS_SYNC_ENABLED=true to enable).")
+        return
+
+    interval_sec = int(os.getenv("HTS_SYNC_INTERVAL_SECONDS", "300"))
+
+    import asyncio
+    from .utils.hts_sync import run_once as hts_run_once
+
+    async def _run_hts_sync():
+        try:
+            await asyncio.to_thread(hts_run_once)
+        except Exception as e:
+            logger.exception(f"HTS sync job error: {e}")
+
+    scheduler.add_job(
+        _run_hts_sync, IntervalTrigger(seconds=interval_sec),
+        id="hts_sync", name="HTS Heat Mirror Sync",
+        replace_existing=True, max_instances=1, coalesce=True,
+    )
+    logger.info(f"HTS sync scheduled every {interval_sec}s")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Running database initialization...")
@@ -359,6 +388,7 @@ async def startup_event():
     schedule_suveechi_sync()
     schedule_wbatngl_capacity_sync()
     schedule_wbatngl_trip_sync()
+    schedule_hts_sync()
 
     logger.success("FastAPI server is running and database is initialized.")
 
