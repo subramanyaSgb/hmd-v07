@@ -54,3 +54,17 @@ CACHE_KEY_DASHBOARD = "ops_live_dashboard"
 DASHBOARD_CACHE_TTL_SEC = 5
 CACHE_KEY_TRIP_DETAIL = "ops_live_trip_detail"
 TRIP_DETAIL_CACHE_TTL_SEC = 10
+
+
+def _time_window_to_cutoff(time_window: str) -> datetime:
+    """today / 24h / 7d / 30d → UTC cutoff datetime. Raises 400 otherwise."""
+    now = datetime.utcnow()
+    if time_window == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if time_window == "24h":
+        return now - timedelta(hours=24)
+    if time_window == "7d":
+        return now - timedelta(days=7)
+    if time_window == "30d":
+        return now - timedelta(days=30)
+    raise HTTPException(400, f"Invalid time_window: {time_window!r}")
