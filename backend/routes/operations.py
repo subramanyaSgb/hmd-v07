@@ -68,3 +68,27 @@ def _time_window_to_cutoff(time_window: str) -> datetime:
     if time_window == "30d":
         return now - timedelta(days=30)
     raise HTTPException(400, f"Invalid time_window: {time_window!r}")
+
+
+def find_matched_heats(db: Session, trip: WbatnglTripMirror) -> list[HtsHeatMirror]:
+    """
+    Return HTS heats that match this trip via the (torpedo, ±window) rule.
+
+    Window: closetime - 15 min  ..  closetime + 90 min.
+    Empty list if trip.closetime is null (in-flight, no destination ETA).
+    Cross-dialect: uses Python-side timedelta arithmetic instead of the
+    PG-only `v_trip_heat_story` view's INTERVAL syntax so SQLite tests pass.
+    """
+    if trip.closetime is None or trip.fleet_id is None:
+        return []
+    lo = trip.closetime - MATCH_WINDOW_BEFORE
+    hi = trip.closetime + MATCH_WINDOW_AFTER
+    return (
+        db.query(HtsHeatMirror)
+        .filter(
+            HtsHeatMirror.torpedo_no == trip.fleet_id,
+            HtsHeatMirror.torpedo_in_time.between(lo, hi),
+        )
+        .order_by(HtsHeatMirror.torpedo_in_time.asc())
+        .all()
+    )
