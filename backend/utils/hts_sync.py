@@ -13,6 +13,7 @@ Env vars (read at runtime):
     HTS_SYNC_INTERVAL_SECONDS default 300
     ORACLE_INSTANT_CLIENT_DIR shared with WBATNGL sync
 """
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -121,3 +122,112 @@ def watermark_for_view(db: Session) -> datetime:
         select(func.max(HtsHeatMirror.torpedo_in_time))
     ).scalar()
     return result or _WATERMARK_FLOOR
+
+
+def _ensure_thick_mode(client_dir: str) -> bool:
+    """Idempotent oracledb thick-mode init. Same pattern as wbatngl_trip_sync."""
+    if not os.path.isdir(client_dir):
+        logger.warning(f"HTS: Oracle Instant Client not found at {client_dir}")
+        return False
+    try:
+        import oracledb
+        oracledb.init_oracle_client(lib_dir=client_dir)
+        return True
+    except Exception as e:
+        if "DPI-1047" in str(e) or "already" in str(e).lower():
+            return True
+        logger.warning(f"HTS: thick-mode init failed: {e}")
+        return False
+
+
+def _connect_oracle():
+    """Open an HTS Oracle connection."""
+    cfg = {
+        "host":     os.getenv("HTS_HOST", "10.10.70.227"),
+        "port":     int(os.getenv("HTS_PORT", "1522")),
+        "user":     os.getenv("HTS_USER", "ICT_IFACE"),
+        "password": os.getenv("HTS_PASSWORD", ""),
+        "service":  os.getenv("HTS_SERVICE", "JVMLPROD.JSW.IN"),
+        "client":   os.getenv("ORACLE_INSTANT_CLIENT_DIR",
+                              r"C:\oracle\instantclient_23_0"),
+    }
+    if not cfg["password"]:
+        raise RuntimeError("HTS_PASSWORD not set")
+    import oracledb
+    _ensure_thick_mode(cfg["client"])
+    return oracledb.connect(
+        user=cfg["user"], password=cfg["password"],
+        dsn=f"{cfg['host']}:{cfg['port']}/{cfg['service']}",
+    )
+
+
+def pull_and_upsert(db: Session, cursor, watermark: datetime) -> dict:
+    """
+    Run the incremental SELECT against HTS view, upsert into mirror.
+    Returns stats dict: fetched / upserted / skipped_no_heat_no / errors.
+    """
+    view = os.getenv("HTS_VIEW", "HTS.VW_HTS_HOTMETAL_DATA")
+    sql = f"SELECT * FROM {view} WHERE TORPEDO_IN_TIME > :wm"
+    cursor.execute(sql, wm=watermark)
+    rows = cursor.fetchall()
+    cols = [d[0] for d in cursor.description]
+
+    stats = {"fetched": len(rows), "upserted": 0,
+             "skipped_no_heat_no": 0, "errors": 0}
+
+    mirror_rows = []
+    for r in rows:
+        try:
+            d = row_to_mirror_dict(r, cols)
+        except Exception:
+            logger.exception(f"row_to_mirror_dict failed for {r!r}")
+            stats["errors"] += 1
+            continue
+        if d is None:
+            stats["skipped_no_heat_no"] += 1
+            continue
+        mirror_rows.append(d)
+
+    stats["upserted"] = upsert_rows(db, mirror_rows)
+    return stats
+
+
+def run_once() -> dict:
+    """
+    One scheduler tick. Pulls all heat rows newer than the local
+    watermark, UPSERTs into hts_heat_mirror.
+    Returns aggregated stats, or {"error": "..."} on Oracle failure.
+    """
+    from ..database.engine import SessionLocal
+
+    logger.info("HTS sync: starting")
+
+    try:
+        conn = _connect_oracle()
+    except Exception as e:
+        logger.exception(f"HTS connect failed: {e}")
+        return {"error": str(e)}
+
+    db = SessionLocal()
+    try:
+        cur = conn.cursor()
+        wm = watermark_for_view(db)
+        stats = pull_and_upsert(db, cur, wm)
+        logger.info(
+            f"HTS sync OK: fetched={stats['fetched']} "
+            f"upserted={stats['upserted']} "
+            f"skipped={stats['skipped_no_heat_no']} "
+            f"errors={stats['errors']} watermark_was={wm}"
+        )
+        cur.close()
+    finally:
+        db.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return stats
+
+
+if __name__ == "__main__":
+    print(run_once())

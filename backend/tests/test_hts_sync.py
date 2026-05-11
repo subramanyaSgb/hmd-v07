@@ -125,3 +125,38 @@ class TestWatermark:
         upsert_rows(db_session, [row_to_mirror_dict(tuple(later), HTS_COLS)])
         wm = watermark_for_view(db_session)
         assert wm == _dt.datetime(2026, 4, 1, 20, 0, 0)
+
+
+from unittest.mock import MagicMock
+from backend.utils.hts_sync import pull_and_upsert
+
+
+class TestPullAndUpsert:
+    def test_fetches_rows_and_returns_stats(self, db_session):
+        cur = MagicMock()
+        cur.description = [(c, None, None, None, None, None, None) for c in HTS_COLS]
+        cur.fetchall.return_value = [SAMPLE_ROW]
+
+        wm = _dt.datetime(1970, 1, 1)
+        stats = pull_and_upsert(db_session, cur, watermark=wm)
+
+        assert cur.execute.called
+        sql = cur.execute.call_args[0][0]
+        assert "HTS.VW_HTS_HOTMETAL_DATA" in sql
+        assert "TORPEDO_IN_TIME > :wm" in sql
+
+        assert stats["fetched"] == 1
+        assert stats["upserted"] == 1
+        assert stats["errors"] == 0
+
+    def test_skips_rows_with_no_heat_no(self, db_session):
+        cur = MagicMock()
+        cur.description = [(c, None, None, None, None, None, None) for c in HTS_COLS]
+        bad = list(SAMPLE_ROW)
+        bad[1] = None
+        cur.fetchall.return_value = [tuple(bad), SAMPLE_ROW]
+
+        stats = pull_and_upsert(db_session, cur, watermark=_WATERMARK_FLOOR)
+        assert stats["fetched"] == 2
+        assert stats["upserted"] == 1
+        assert stats["skipped_no_heat_no"] == 1
