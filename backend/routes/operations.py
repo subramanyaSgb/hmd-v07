@@ -92,3 +92,31 @@ def find_matched_heats(db: Session, trip: WbatnglTripMirror) -> list[HtsHeatMirr
         .order_by(HtsHeatMirror.torpedo_in_time.asc())
         .all()
     )
+
+
+def compute_anomaly_flags(net_weight_mt: Optional[float],
+                          matched_total_mt: Optional[float]) -> list[dict]:
+    """
+    Compute anomaly flags for one trip.
+
+    For v1 the only flag is `weight_delta` — fires when |HTS sum - WBATNGL
+    net| / WBATNGL net exceeds WEIGHT_DELTA_ANOMALY_PCT. Returns [] when
+    either side is missing (matched_total_mt is None when no heats matched
+    yet; net_weight_mt may be null on torpedoes that depart without weight).
+    """
+    flags: list[dict] = []
+    if net_weight_mt and matched_total_mt is not None:
+        delta_mt = matched_total_mt - net_weight_mt
+        delta_pct = (delta_mt / net_weight_mt) * 100.0
+        if abs(delta_pct) > WEIGHT_DELTA_ANOMALY_PCT:
+            sign = "+" if delta_mt >= 0 else "-"
+            flags.append({
+                "code": "weight_delta",
+                "severity": "warn",
+                "message": (
+                    f"Weight anomaly: WBATNGL {net_weight_mt:.0f} MT, "
+                    f"HTS sum {matched_total_mt:.0f} MT "
+                    f"({sign}{abs(delta_mt):.0f} MT, {sign}{abs(delta_pct):.1f}%)"
+                ),
+            })
+    return flags

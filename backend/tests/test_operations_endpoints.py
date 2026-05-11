@@ -106,3 +106,39 @@ class TestFindMatchedHeats:
         trip = trip_at("T1", "TLC-22", closetime=None,
                        out_date=datetime(2026, 4, 1, 14, 0))
         assert find_matched_heats(db_session, trip) == []
+
+
+from backend.routes.operations import compute_anomaly_flags
+
+
+class TestComputeAnomalyFlags:
+    def test_no_flags_when_within_tolerance(self):
+        flags = compute_anomaly_flags(net_weight_mt=368.0,
+                                       matched_total_mt=347.0)
+        # |368 - 347| / 368 = 5.7% < 10% → no flag
+        assert flags == []
+
+    def test_weight_delta_flag_when_over_threshold(self):
+        flags = compute_anomaly_flags(net_weight_mt=368.0,
+                                       matched_total_mt=412.0)
+        # +44 MT / 368 = +12% > 10% → flag
+        assert len(flags) == 1
+        f = flags[0]
+        assert f["code"] == "weight_delta"
+        assert f["severity"] == "warn"
+        assert "WBATNGL" in f["message"] and "HTS" in f["message"]
+        assert "+12" in f["message"] or "12.0" in f["message"]
+
+    def test_skips_when_no_matched_heats(self):
+        # matched_total_mt is None when no heats matched yet
+        assert compute_anomaly_flags(net_weight_mt=368.0,
+                                      matched_total_mt=None) == []
+
+    def test_skips_when_no_net_weight(self):
+        assert compute_anomaly_flags(net_weight_mt=None,
+                                      matched_total_mt=347.0) == []
+
+    def test_skips_when_net_weight_zero(self):
+        # Defensive: division-by-zero must not crash
+        assert compute_anomaly_flags(net_weight_mt=0.0,
+                                      matched_total_mt=12.0) == []
