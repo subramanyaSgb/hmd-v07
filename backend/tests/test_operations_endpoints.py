@@ -635,3 +635,50 @@ class TestTripDetailSkeleton:
     def test_unauthenticated_rejected(self, client):
         r = client.get("/api/trip-history-live/T1")
         assert r.status_code == 401
+
+
+class TestTripDetailContent:
+    def test_matched_heats_in_order(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=30)
+        trip_at("T1", "TLC-22", closetime=t)
+        heat_at("E_LATER", "TLC-22",
+                torpedo_in_time=t + timedelta(minutes=20))
+        heat_at("D_EARLIER", "TLC-22",
+                torpedo_in_time=t + timedelta(minutes=5))
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        heats = r.json()["matched_heats"]
+        assert [h["heat_no"] for h in heats] == ["D_EARLIER", "E_LATER"]
+
+    def test_anomaly_flag_present_when_threshold_exceeded(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t, net_weight=368.0)
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=412.0)
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        flags = r.json()["anomaly_flags"]
+        assert len(flags) == 1
+        assert flags[0]["code"] == "weight_delta"
+
+    def test_current_position_when_present(
+            self, db_session, client, auth_headers, trip_at):
+        from backend.database.models import FleetLiveLocation
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-22", closetime=t)
+        db_session.add(FleetLiveLocation(
+            fleet_id="TLC-22", type="Moving", x=12.3, y=45.6,
+            last_updated=datetime.utcnow(),
+        ))
+        db_session.commit()
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        pos = r.json()["current_torpedo_position"]
+        assert pos["fleet_id"] == "TLC-22"
+        assert pos["type"] == "Moving"
+
+    def test_current_position_null_when_absent(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-NO-LOC", closetime=t)
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        assert r.json()["current_torpedo_position"] is None
