@@ -1,0 +1,56 @@
+"""
+Operations Live + Trip History (Live) endpoints.
+
+Consumed by the new /operations-live and /trip-history-live pages. Reads
+from wbatngl_trip_mirror (producer-side), hts_heat_mirror (consumer-side),
+and fleet_live_locations (live GPS). Strictly read-only — never mutates
+any source table.
+
+Auth: get_current_user_required for all endpoints (any authenticated role),
+matching the read-side auth on /api/jsw/*.
+
+See docs/plans/2026-05-11-operations-live-design.md for the full architecture
+and docs/plans/2026-05-12-operations-live-phase-2.md for the per-task plan.
+"""
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import String, cast, func, or_, and_
+from sqlalchemy.orm import Session
+
+from ..database.engine import get_db
+from ..database.models import (
+    FleetLiveLocation,
+    HtsHeatMirror,
+    User,
+    WbatnglTripMirror,
+)
+from ..logger import logger
+from ..utils.cache import fleet_cache
+from ..utils.security import get_current_user_required
+
+
+router = APIRouter(tags=["operations-live"])
+
+# Trip ↔ heat matching window (must match the v_trip_heat_story view).
+MATCH_WINDOW_BEFORE = timedelta(minutes=15)
+MATCH_WINDOW_AFTER = timedelta(minutes=90)
+
+# Six SMS3 converters tracked on Page 1. Order is the display order.
+CONVERTERS = ("D", "E", "F", "G", "H", "I")
+
+# Weight-delta anomaly threshold: |WBATNGL net - SUM(HTS hotmetal)| / WBATNGL net > 10%.
+WEIGHT_DELTA_ANOMALY_PCT = 10.0
+
+# Sort whitelist for /api/trip-history-live — never let user input become ORDER BY.
+TRIP_HISTORY_SORT_WHITELIST = {
+    "updated_date", "first_tare_time", "out_date", "closetime",
+    "net_weight", "fleet_id",
+}
+
+# Cache keys / TTLs.
+CACHE_KEY_DASHBOARD = "ops_live_dashboard"
+DASHBOARD_CACHE_TTL_SEC = 5
+CACHE_KEY_TRIP_DETAIL = "ops_live_trip_detail"
+TRIP_DETAIL_CACHE_TTL_SEC = 10
