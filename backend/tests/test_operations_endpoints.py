@@ -410,3 +410,61 @@ class TestDashboardCache:
         r2 = client.get("/api/operations-live/dashboard", headers=auth_headers)
         assert r1.json()["kpi_strip"]["production_today_mt"] == \
                r2.json()["kpi_strip"]["production_today_mt"]
+
+
+class TestTripHistoryLiveBasic:
+    def test_returns_paginated_shape(self, db_session, client, auth_headers, trip_at):
+        for i in range(60):
+            trip_at(f"T{i:02d}", f"TLC-{i % 53 + 1:02d}",
+                    closetime=datetime.utcnow() - timedelta(minutes=i))
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page"] == 1
+        assert body["page_size"] == 50
+        assert body["total"] == 60
+        assert len(body["rows"]) == 50
+        assert set(body["last_sync_at"]) == {"wbatngl", "hts"}
+
+    def test_pagination(self, db_session, client, auth_headers, trip_at):
+        for i in range(60):
+            trip_at(f"T{i:02d}", f"TLC-{i % 53 + 1:02d}",
+                    closetime=datetime.utcnow() - timedelta(minutes=i))
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&page=2&page_size=25",
+            headers=auth_headers,
+        )
+        body = r.json()
+        assert body["page"] == 2
+        assert body["page_size"] == 25
+        assert len(body["rows"]) == 25
+
+    def test_default_sort_out_date_desc(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow()
+        trip_at("OLD", "TLC-01", closetime=t - timedelta(hours=3),
+                out_date=t - timedelta(hours=3, minutes=10))
+        trip_at("NEW", "TLC-02", closetime=t - timedelta(minutes=10),
+                out_date=t - timedelta(minutes=20))
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        ids = [r_["trip_id"] for r_ in r.json()["rows"]]
+        assert ids.index("NEW") < ids.index("OLD")
+
+    def test_unauthenticated_rejected(self, client):
+        r = client.get("/api/trip-history-live")
+        assert r.status_code == 401
+
+    def test_invalid_sort_by_returns_400(
+            self, db_session, client, auth_headers, trip_at):
+        trip_at("T1", "TLC-01", closetime=datetime.utcnow())
+        r = client.get("/api/trip-history-live?sort_by=DROP_TABLE",
+                       headers=auth_headers)
+        assert r.status_code == 400
+
+    def test_invalid_time_window_returns_400(
+            self, db_session, client, auth_headers):
+        r = client.get("/api/trip-history-live?time_window=banana",
+                       headers=auth_headers)
+        assert r.status_code == 400

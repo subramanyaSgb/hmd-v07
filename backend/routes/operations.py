@@ -390,3 +390,91 @@ async def operations_live_dashboard(
     except Exception:
         logger.exception("ops-live dashboard: cache set failed (non-fatal)")
     return payload
+
+
+def _row_to_dict(row, model) -> dict:
+    """Serialize a SQLAlchemy row to a dict using the model's column names.
+
+    Model-agnostic; reused by trip-history-live list + detail endpoints.
+    """
+    return {c.name: getattr(row, c.name) for c in model.__table__.columns}
+
+
+@router.get("/api/trip-history-live")
+async def trip_history_live(
+    time_window: str = Query("today"),
+    source_lab: Optional[str] = Query(None),
+    destination: Optional[str] = Query(None),
+    shift: Optional[str] = Query(None),
+    fleet_id: Optional[str] = Query(None),
+    status: str = Query("all"),
+    converter: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    sort_by: str = Query("out_date"),
+    sort_order: str = Query("desc"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_required),
+):
+    """
+    Paginated trip history with per-row enrichment from matched HTS heats.
+
+    Filter semantics: source_lab / destination / shift / fleet_id / q are
+    applied at the SQL level. status / converter are applied AFTER pagination
+    and enrichment (acknowledged v1 caveat — see Task 2.12 in
+    docs/plans/2026-05-12-operations-live-phase-2.md). When a post-filter is
+    active, `total` reports the post-filter count of the current visible page
+    rather than the global filtered count.
+    """
+    if sort_by not in TRIP_HISTORY_SORT_WHITELIST:
+        raise HTTPException(
+            400, f"sort_by must be one of {sorted(TRIP_HISTORY_SORT_WHITELIST)}"
+        )
+
+    cutoff = _time_window_to_cutoff(time_window)
+
+    qry = db.query(WbatnglTripMirror).filter(
+        WbatnglTripMirror.updated_date >= cutoff
+    )
+    if source_lab and source_lab != "all":
+        qry = qry.filter(WbatnglTripMirror.source_lab == source_lab)
+    if destination and destination != "all":
+        qry = qry.filter(WbatnglTripMirror.destination == destination)
+    if shift and shift != "all":
+        qry = qry.filter(WbatnglTripMirror.shift == shift)
+    if fleet_id and fleet_id != "all":
+        qry = qry.filter(WbatnglTripMirror.fleet_id == fleet_id)
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter(or_(
+            WbatnglTripMirror.trip_id.ilike(like),
+            WbatnglTripMirror.fleet_id.ilike(like),
+            WbatnglTripMirror.ladleno_raw.ilike(like),
+        ))
+
+    total = qry.count()
+    col = getattr(WbatnglTripMirror, sort_by)
+    order = col.desc() if sort_order == "desc" else col.asc()
+    trips = (qry.order_by(order)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+                .all())
+
+    # No per-row enrichment yet — Task 2.12 adds it.
+    rows = [{
+        **_row_to_dict(t, WbatnglTripMirror),
+        "match_status": None,
+        "first_heat_no": None,
+        "matched_heat_count": 0,
+        "matched_hotmetal_total_mt": None,
+        "weight_delta_pct": None,
+    } for t in trips]
+
+    return {
+        "rows": rows,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "last_sync_at": _last_sync_at(db),
+    }
