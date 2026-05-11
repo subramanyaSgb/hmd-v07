@@ -144,6 +144,14 @@ async def operations_live_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_required),
 ):
+    """
+    Consolidated Page 1 (operations live) payload.
+
+    Converter state machine is `IDLE | HEAT_IN_PROGRESS`. The design doc also
+    mentions `WAITING_TORPEDO`, but in v1 we can't distinguish "converter idle
+    and waiting for a specific incoming torpedo" without consumer-side
+    scheduling data we don't yet sync — so it stays out of the wire payload.
+    """
     cached = fleet_cache.get(CACHE_KEY_DASHBOARD)
     if cached is not None:
         return cached
@@ -201,6 +209,78 @@ async def operations_live_dashboard(
         .count()
     )
 
+    # Converter cards — one row per letter; data sourced from hts_heat_mirror.
+    converter_cards = []
+    for letter in CONVERTERS:
+        base = db.query(HtsHeatMirror).filter(
+            HtsHeatMirror.converter_no == letter
+        )
+
+        in_progress = (
+            base.filter(HtsHeatMirror.torpedo_out_time.is_(None))
+                .order_by(HtsHeatMirror.torpedo_in_time.desc())
+                .first()
+        )
+        last_completed = (
+            base.filter(HtsHeatMirror.torpedo_out_time.isnot(None))
+                .order_by(HtsHeatMirror.torpedo_out_time.desc())
+                .first()
+        )
+        heats_today = (
+            base.filter(HtsHeatMirror.torpedo_in_time >= today_cutoff).count()
+        )
+        # SMS label: prefer the in-progress heat's value, then most recent
+        # non-null SMS overall.
+        sms_value = None
+        if in_progress and in_progress.sms:
+            sms_value = in_progress.sms
+        else:
+            recent_with_sms = (
+                base.filter(HtsHeatMirror.sms.isnot(None))
+                    .order_by(HtsHeatMirror.torpedo_in_time.desc())
+                    .first()
+            )
+            if recent_with_sms:
+                sms_value = recent_with_sms.sms
+
+        if in_progress:
+            elapsed_min = int(
+                (datetime.utcnow() - in_progress.torpedo_in_time).total_seconds() // 60
+            )
+            card = {
+                "converter_no": letter,
+                "sms": sms_value,
+                "state": "HEAT_IN_PROGRESS",
+                "current_heat_no": in_progress.heat_no,
+                "current_torpedo": in_progress.torpedo_no,
+                "elapsed_minutes": elapsed_min,
+                "hotmetal_received_mt": (
+                    float(in_progress.hotmetal_qty)
+                    if in_progress.hotmetal_qty is not None else None
+                ),
+                "last_heat_no": last_completed.heat_no if last_completed else None,
+                "last_heat_at": (
+                    last_completed.torpedo_out_time if last_completed else None
+                ),
+                "heats_today": heats_today,
+            }
+        else:
+            card = {
+                "converter_no": letter,
+                "sms": sms_value,
+                "state": "IDLE",
+                "current_heat_no": None,
+                "current_torpedo": None,
+                "elapsed_minutes": None,
+                "hotmetal_received_mt": None,
+                "last_heat_no": last_completed.heat_no if last_completed else None,
+                "last_heat_at": (
+                    last_completed.torpedo_out_time if last_completed else None
+                ),
+                "heats_today": heats_today,
+            }
+        converter_cards.append(card)
+
     payload = {
         "kpi_strip": {
             "production_today_mt": float(production_today or 0.0),
@@ -209,7 +289,7 @@ async def operations_live_dashboard(
             "heats_in_progress": heats_in_progress,
             "idle_torpedoes": idle_torpedoes,
         },
-        "converters": [_build_empty_converter_card(c) for c in CONVERTERS],
+        "converters": converter_cards,
         "active_trips": [],
         "activity_feed": [],
         "last_sync_at": _last_sync_at(db),

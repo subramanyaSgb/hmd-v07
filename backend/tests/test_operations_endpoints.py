@@ -247,3 +247,61 @@ class TestDashboardKpiStrip:
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         # TLC-22 idle counts, TLC-23 moving does not
         assert r.json()["kpi_strip"]["idle_torpedoes"] == 1
+
+
+def _converter_by(body, letter):
+    return next(c for c in body["converters"] if c["converter_no"] == letter)
+
+
+class TestDashboardConverters:
+    def test_idle_state_when_no_heat_in_progress(
+            self, db_session, client, auth_headers):
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        for c in r.json()["converters"]:
+            assert c["state"] == "IDLE"
+            assert c["heats_today"] == 0
+
+    def test_heat_in_progress_state(
+            self, db_session, client, auth_headers, heat_at):
+        now = datetime.utcnow()
+        heat_at("D1", "TLC-22",
+                torpedo_in_time=now - timedelta(minutes=12),
+                torpedo_out_time=None,
+                hotmetal_qty=126.0,
+                sms="SMS3")
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        d = _converter_by(r.json(), "D")
+        assert d["state"] == "HEAT_IN_PROGRESS"
+        assert d["current_heat_no"] == "D1"
+        assert d["current_torpedo"] == "TLC-22"
+        assert 11 <= d["elapsed_minutes"] <= 13
+        assert d["hotmetal_received_mt"] == 126.0
+        assert d["sms"] == "SMS3"
+
+    def test_heats_today_counts_only_today(
+            self, db_session, client, auth_headers, heat_at):
+        now = datetime.utcnow().replace(hour=10)
+        heat_at("D1", "TLC-22", torpedo_in_time=now)
+        heat_at("D2", "TLC-23", torpedo_in_time=now + timedelta(minutes=20))
+        # Yesterday
+        heat_at("D_OLD", "TLC-22",
+                torpedo_in_time=now - timedelta(days=1))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert _converter_by(r.json(), "D")["heats_today"] == 2
+
+    def test_last_heat_is_most_recent_completed(
+            self, db_session, client, auth_headers, heat_at):
+        now = datetime.utcnow()
+        heat_at("D_OLD", "TLC-22",
+                torpedo_in_time=now - timedelta(hours=4),
+                torpedo_out_time=now - timedelta(hours=4) + timedelta(minutes=10))
+        heat_at("D_NEW", "TLC-22",
+                torpedo_in_time=now - timedelta(hours=1),
+                torpedo_out_time=now - timedelta(hours=1) + timedelta(minutes=10))
+        # in-progress heat — NOT to be reported as last_heat
+        heat_at("D_NOW", "TLC-22",
+                torpedo_in_time=now - timedelta(minutes=5),
+                torpedo_out_time=None)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        d = _converter_by(r.json(), "D")
+        assert d["last_heat_no"] == "D_NEW"
