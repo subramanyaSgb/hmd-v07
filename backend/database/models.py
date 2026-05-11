@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Date, UniqueConstraint, Index, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Numeric, DateTime, Boolean, Date, UniqueConstraint, Index, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .engine import Base
@@ -568,4 +568,29 @@ class WbatnglTripMirror(Base):
     sms_ack_time = Column(DateTime)
     updated_date = Column(DateTime, index=True)
 
+    synced_at = Column(DateTime, server_default=func.now())
+
+class HtsHeatMirror(Base):
+    """
+    Mirror of HTS.VW_HTS_HOTMETAL_DATA from JSW Oracle HTS DB.
+    Populated by hts_sync.py every 5 minutes.
+
+    HEAT_NO is the natural primary key (confirmed unique in 11-May
+    inventory: 123 distinct heat_nos / 123 rows). One torpedo can pour
+    to multiple heats — see HTS sample rows where TLC-22 fed both
+    E2030590 and G2030594.
+    """
+    __tablename__ = "hts_heat_mirror"
+
+    id = Column(Integer, primary_key=True)
+    heat_no = Column(String(20), unique=True, nullable=False, index=True)
+    converter_no = Column(String(1))
+    sms = Column(String(10))                # Hari's new column once shipped
+    torpedo_no = Column(String(15), index=True)        # normalized "TLC-22"
+    torpedo_no_raw = Column(String(15))                # original "22"
+    hotmetal_qty = Column(Numeric(10, 3))
+    torpedo_qty = Column(Numeric(10, 3))
+    torpedo_in_time = Column(DateTime, index=True)
+    torpedo_out_time = Column(DateTime, index=True)
+    converter_life = Column(Integer)
     synced_at = Column(DateTime, server_default=func.now())
