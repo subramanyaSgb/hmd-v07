@@ -357,3 +357,56 @@ class TestDashboardActiveTrips:
         db_session.commit()
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         assert r.json()["active_trips"][0]["current_status"] == "Moving"
+
+
+class TestDashboardActivityFeed:
+    def test_trip_close_event_appears(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t,
+                source_lab="BF3", destination="SMS3", net_weight=368.0)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        events = r.json()["activity_feed"]
+        # at least one trip_completed event for T1
+        completes = [e for e in events if e["type"] == "trip_completed"]
+        assert any(e["ref_id"] == "T1" for e in completes)
+
+    def test_heat_start_event_appears(
+            self, db_session, client, auth_headers, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=15)
+        heat_at("D1", "TLC-22", torpedo_in_time=t)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        events = r.json()["activity_feed"]
+        starts = [e for e in events if e["type"] == "heat_started"]
+        assert any(e["ref_id"] == "D1" for e in starts)
+
+    def test_feed_capped_at_20_reverse_chronological(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        base = datetime.utcnow() - timedelta(minutes=50)
+        for i in range(15):
+            trip_at(f"T{i}", f"TLC-{i:02d}",
+                    closetime=base + timedelta(minutes=i))
+        for i in range(15):
+            heat_at(f"H{i}", f"TLC-{i:02d}",
+                    torpedo_in_time=base + timedelta(minutes=i + 1))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        events = r.json()["activity_feed"]
+        assert len(events) == 20
+        # Newest first
+        ats = [e["at"] for e in events]
+        assert ats == sorted(ats, reverse=True)
+
+
+class TestDashboardCache:
+    def test_second_call_is_cached(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow()
+        trip_at("T1", "TLC-22", closetime=t,
+                source_lab="BF3", destination="SMS3", net_weight=300.0)
+        r1 = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        # Add another trip — should NOT show up while cache is warm
+        trip_at("T2", "TLC-23", closetime=t,
+                source_lab="BF3", destination="SMS3", net_weight=200.0)
+        r2 = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r1.json()["kpi_strip"]["production_today_mt"] == \
+               r2.json()["kpi_strip"]["production_today_mt"]

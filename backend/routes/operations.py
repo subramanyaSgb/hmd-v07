@@ -328,6 +328,50 @@ async def operations_live_dashboard(
             "current_status": latest_status_by_fleet.get(t.fleet_id),
         })
 
+    # Activity feed — last 20 events from the union of trip_close + heat_start.
+    feed_horizon = datetime.utcnow() - timedelta(hours=2)
+
+    recent_closes = (
+        db.query(WbatnglTripMirror)
+        .filter(WbatnglTripMirror.closetime.isnot(None),
+                WbatnglTripMirror.closetime >= feed_horizon)
+        .order_by(WbatnglTripMirror.closetime.desc())
+        .limit(20)
+        .all()
+    )
+    recent_heats = (
+        db.query(HtsHeatMirror)
+        .filter(HtsHeatMirror.torpedo_in_time >= feed_horizon)
+        .order_by(HtsHeatMirror.torpedo_in_time.desc())
+        .limit(20)
+        .all()
+    )
+    events = []
+    for t in recent_closes:
+        events.append({
+            "type": "trip_completed",
+            "at": t.closetime,
+            "summary": (
+                f"{t.fleet_id or '?'} closed {t.source_lab or '?'} → "
+                f"{t.destination or '?'}"
+                + (f" ({float(t.net_weight):.0f} MT)" if t.net_weight else "")
+            ),
+            "ref_id": t.trip_id,
+        })
+    for h in recent_heats:
+        events.append({
+            "type": "heat_started",
+            "at": h.torpedo_in_time,
+            "summary": (
+                f"Heat {h.heat_no} started"
+                + (f" @ {h.converter_no}" if h.converter_no else "")
+                + (f" (torpedo {h.torpedo_no})" if h.torpedo_no else "")
+            ),
+            "ref_id": h.heat_no,
+        })
+    events.sort(key=lambda e: e["at"], reverse=True)
+    events = events[:20]
+
     payload = {
         "kpi_strip": {
             "production_today_mt": float(production_today or 0.0),
@@ -338,7 +382,7 @@ async def operations_live_dashboard(
         },
         "converters": converter_cards,
         "active_trips": active_trips_payload,
-        "activity_feed": [],
+        "activity_feed": events,
         "last_sync_at": _last_sync_at(db),
     }
     try:
