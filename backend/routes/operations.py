@@ -526,3 +526,69 @@ async def trip_history_live(
         "total": final_total,
         "last_sync_at": _last_sync_at(db),
     }
+
+
+@router.get("/api/trip-history-live/{trip_id}")
+async def trip_history_live_detail(
+    trip_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_required),
+):
+    """
+    Per-trip drill-down payload for the trip-history-live page.
+
+    Shape: trip + matched_heats (sorted ASC by torpedo_in_time via
+    find_matched_heats) + current_torpedo_position (latest fleet_live_locations
+    row for the torpedo, null when missing or no fleet_id) + anomaly_flags
+    (via compute_anomaly_flags) + last_sync_at. Cached 10 s under
+    "{CACHE_KEY_TRIP_DETAIL}:{trip_id}".
+    """
+    cache_key = f"{CACHE_KEY_TRIP_DETAIL}:{trip_id}"
+    cached = fleet_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    trip = (
+        db.query(WbatnglTripMirror)
+        .filter(WbatnglTripMirror.trip_id == trip_id)
+        .first()
+    )
+    if trip is None:
+        raise HTTPException(404, f"Trip not found: {trip_id}")
+
+    heats = find_matched_heats(db, trip)
+    matched_total = (
+        sum(float(h.hotmetal_qty) for h in heats if h.hotmetal_qty is not None)
+        if heats else None
+    )
+    flags = compute_anomaly_flags(
+        net_weight_mt=float(trip.net_weight) if trip.net_weight is not None else None,
+        matched_total_mt=matched_total,
+    )
+
+    # Latest fleet_live_locations row for the torpedo.
+    current_pos = None
+    if trip.fleet_id:
+        latest = (
+            db.query(FleetLiveLocation)
+            .filter(FleetLiveLocation.fleet_id == trip.fleet_id)
+            .order_by(FleetLiveLocation.last_updated.desc())
+            .first()
+        )
+        if latest:
+            current_pos = _row_to_dict(latest, FleetLiveLocation)
+
+    payload = {
+        "trip": _row_to_dict(trip, WbatnglTripMirror),
+        "matched_heats": [_row_to_dict(h, HtsHeatMirror) for h in heats],
+        "current_torpedo_position": current_pos,
+        "anomaly_flags": flags,
+        "last_sync_at": _last_sync_at(db),
+    }
+    try:
+        fleet_cache.set(cache_key, payload, TRIP_DETAIL_CACHE_TTL_SEC)
+    except Exception:
+        logger.exception(
+            "ops-live trip detail: cache set failed (non-fatal)"
+        )
+    return payload

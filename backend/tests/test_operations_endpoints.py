@@ -614,3 +614,24 @@ class TestTripHistoryLiveFilters:
             headers=auth_headers,
         )
         assert r.json()["total"] == 3
+
+
+class TestTripDetailSkeleton:
+    def test_returns_shape(self, db_session, client, auth_headers, trip_at):
+        trip_at("T1", "TLC-22",
+                closetime=datetime.utcnow() - timedelta(minutes=10))
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        for key in ("trip", "matched_heats", "current_torpedo_position",
+                    "anomaly_flags", "last_sync_at"):
+            assert key in body
+        assert body["trip"]["trip_id"] == "T1"
+
+    def test_404_for_unknown_trip(self, db_session, client, auth_headers):
+        r = client.get("/api/trip-history-live/NOPE", headers=auth_headers)
+        assert r.status_code == 404
+
+    def test_unauthenticated_rejected(self, client):
+        r = client.get("/api/trip-history-live/T1")
+        assert r.status_code == 401
