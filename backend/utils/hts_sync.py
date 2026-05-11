@@ -13,6 +13,7 @@ Env vars (read at runtime):
     HTS_SYNC_INTERVAL_SECONDS default 300
     ORACLE_INSTANT_CLIENT_DIR shared with WBATNGL sync
 """
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -22,6 +23,8 @@ from ..database.models import HtsHeatMirror
 from ..logger import logger
 
 UPSERT_CHUNK_SIZE = 500
+
+_WATERMARK_FLOOR = datetime(1970, 1, 1)
 
 
 def normalize_torpedo_no(raw: Optional[str]) -> Optional[str]:
@@ -107,3 +110,14 @@ def upsert_rows(db: Session, rows: list) -> int:
         persisted += len(chunk)
     db.commit()
     return persisted
+
+
+def watermark_for_view(db: Session) -> datetime:
+    """
+    Return MAX(torpedo_in_time) from hts_heat_mirror, or the epoch floor
+    if empty. Used as the WHERE > value in the next incremental pull.
+    """
+    result = db.execute(
+        select(func.max(HtsHeatMirror.torpedo_in_time))
+    ).scalar()
+    return result or _WATERMARK_FLOOR

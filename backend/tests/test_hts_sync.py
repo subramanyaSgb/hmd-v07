@@ -107,3 +107,21 @@ class TestUpsertRows:
         rows = [None, row_to_mirror_dict(SAMPLE_ROW, HTS_COLS), None]
         n = upsert_rows(db_session, rows)
         assert n == 1
+
+
+from backend.utils.hts_sync import watermark_for_view, _WATERMARK_FLOOR
+
+
+class TestWatermark:
+    def test_empty_mirror_returns_floor(self, db_session):
+        wm = watermark_for_view(db_session)
+        assert wm == _WATERMARK_FLOOR
+
+    def test_returns_max_torpedo_in_time(self, db_session):
+        upsert_rows(db_session, [row_to_mirror_dict(SAMPLE_ROW, HTS_COLS)])
+        later = list(SAMPLE_ROW)
+        later[1] = "D2030600"
+        later[4] = _dt.datetime(2026, 4, 1, 20, 0, 0)
+        upsert_rows(db_session, [row_to_mirror_dict(tuple(later), HTS_COLS)])
+        wm = watermark_for_view(db_session)
+        assert wm == _dt.datetime(2026, 4, 1, 20, 0, 0)
