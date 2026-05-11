@@ -71,6 +71,9 @@ logs/
 backend/tests/res.txt
 backend/tests/*.tmp.txt
 backend/tests/*.local.txt
+report.txt
+report_*.txt
+*.report.txt
 
 # Misc
 *.bak
