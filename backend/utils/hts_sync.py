@@ -27,6 +27,8 @@ UPSERT_CHUNK_SIZE = 500
 
 _WATERMARK_FLOOR = datetime(1970, 1, 1)
 
+_ORACLE_THICK_INITIALIZED = False
+
 
 def normalize_torpedo_no(raw: Optional[str]) -> Optional[str]:
     """
@@ -126,15 +128,20 @@ def watermark_for_view(db: Session) -> datetime:
 
 def _ensure_thick_mode(client_dir: str) -> bool:
     """Idempotent oracledb thick-mode init. Same pattern as wbatngl_trip_sync."""
+    global _ORACLE_THICK_INITIALIZED
+    if _ORACLE_THICK_INITIALIZED:
+        return True
     if not os.path.isdir(client_dir):
         logger.warning(f"HTS: Oracle Instant Client not found at {client_dir}")
         return False
     try:
         import oracledb
         oracledb.init_oracle_client(lib_dir=client_dir)
+        _ORACLE_THICK_INITIALIZED = True
         return True
     except Exception as e:
         if "DPI-1047" in str(e) or "already" in str(e).lower():
+            _ORACLE_THICK_INITIALIZED = True
             return True
         logger.warning(f"HTS: thick-mode init failed: {e}")
         return False
