@@ -160,3 +160,41 @@ class TestPullAndUpsert:
         assert stats["fetched"] == 2
         assert stats["upserted"] == 1
         assert stats["skipped_no_heat_no"] == 1
+
+
+class TestConnectOracle:
+    def test_raises_when_password_missing(self, monkeypatch):
+        from backend.utils.hts_sync import _connect_oracle
+        monkeypatch.delenv("HTS_PASSWORD", raising=False)
+        with pytest.raises(RuntimeError, match="HTS_PASSWORD"):
+            _connect_oracle()
+
+
+from unittest.mock import patch
+
+
+class TestRunOnceErrorHandling:
+    def test_run_once_returns_error_dict_on_pull_failure(self, monkeypatch):
+        """If pull_and_upsert raises, run_once must rollback and return error dict."""
+        from backend.utils import hts_sync
+
+        # Stub _connect_oracle to return a mock conn so we don't try real Oracle
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        def fake_connect():
+            return mock_conn
+
+        # Stub pull_and_upsert to raise
+        def fake_pull(*args, **kwargs):
+            raise RuntimeError("simulated DB error")
+
+        monkeypatch.setattr(hts_sync, "_connect_oracle", fake_connect)
+        monkeypatch.setattr(hts_sync, "pull_and_upsert", fake_pull)
+
+        result = hts_sync.run_once()
+        assert "error" in result
+        assert "simulated DB error" in result["error"]
+        # Connection must still be closed
+        mock_conn.close.assert_called_once()
