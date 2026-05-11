@@ -468,3 +468,87 @@ class TestTripHistoryLiveBasic:
         r = client.get("/api/trip-history-live?time_window=banana",
                        headers=auth_headers)
         assert r.status_code == 400
+
+
+class TestTripHistoryLiveEnrichment:
+    def test_match_status_complete(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t, net_weight=368.0)
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=170.0)
+        heat_at("E1", "TLC-22", torpedo_in_time=t + timedelta(minutes=15),
+                hotmetal_qty=180.0)
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        row = next(r_ for r_ in r.json()["rows"] if r_["trip_id"] == "T1")
+        assert row["match_status"] == "complete"
+        assert row["first_heat_no"] == "D1"
+        assert row["matched_heat_count"] == 2
+        assert row["matched_hotmetal_total_mt"] == 350.0
+        # (350 - 368)/368 ~= -4.9%
+        assert -5.5 < row["weight_delta_pct"] < -4.0
+
+    def test_match_status_awaiting_pour(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t, net_weight=368.0)
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        row = next(r_ for r_ in r.json()["rows"] if r_["trip_id"] == "T1")
+        assert row["match_status"] == "awaiting_pour"
+        assert row["first_heat_no"] is None
+        assert row["matched_heat_count"] == 0
+
+    def test_match_status_in_flight(
+            self, db_session, client, auth_headers, trip_at):
+        # closetime None → trip still in flight
+        t = datetime.utcnow()
+        trip_at("T1", "TLC-22", closetime=None, out_date=t,
+                net_weight=368.0, updated_date=t)
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        row = next(r_ for r_ in r.json()["rows"] if r_["trip_id"] == "T1")
+        assert row["match_status"] == "in_flight"
+
+    def test_match_status_anomaly(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t, net_weight=368.0)
+        # +44 MT = +12% → anomaly
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=412.0)
+        r = client.get("/api/trip-history-live?time_window=30d",
+                       headers=auth_headers)
+        row = next(r_ for r_ in r.json()["rows"] if r_["trip_id"] == "T1")
+        assert row["match_status"] == "anomaly"
+
+    def test_status_filter_complete(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T_DONE", "TLC-22", closetime=t, net_weight=368.0)
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=350.0)
+        trip_at("T_WAIT", "TLC-23", closetime=t, net_weight=368.0)
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&status=complete",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert "T_DONE" in ids and "T_WAIT" not in ids
+
+    def test_converter_filter(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=20)
+        trip_at("T_D", "TLC-22", closetime=t, net_weight=368.0)
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=350.0, converter_no="D")
+        trip_at("T_E", "TLC-23", closetime=t, net_weight=368.0)
+        heat_at("E1", "TLC-23", torpedo_in_time=t + timedelta(minutes=5),
+                hotmetal_qty=350.0, converter_no="E")
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&converter=D",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert ids == {"T_D"}

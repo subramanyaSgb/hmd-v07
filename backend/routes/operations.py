@@ -461,20 +461,68 @@ async def trip_history_live(
                 .limit(page_size)
                 .all())
 
-    # No per-row enrichment yet — Task 2.12 adds it.
-    rows = [{
-        **_row_to_dict(t, WbatnglTripMirror),
-        "match_status": None,
-        "first_heat_no": None,
-        "matched_heat_count": 0,
-        "matched_hotmetal_total_mt": None,
-        "weight_delta_pct": None,
-    } for t in trips]
+    # Per-row enrichment — pull matched heats once per page; small N (≤200).
+    enriched_rows = []
+    for t in trips:
+        heats = find_matched_heats(db, t)
+        match_count = len(heats)
+        matched_total = (
+            sum(float(h.hotmetal_qty) for h in heats if h.hotmetal_qty is not None)
+            if heats else None
+        )
+        anomaly = bool(compute_anomaly_flags(
+            net_weight_mt=float(t.net_weight) if t.net_weight is not None else None,
+            matched_total_mt=matched_total,
+        ))
+        if t.closetime is None:
+            ms = "in_flight"
+        elif match_count == 0:
+            ms = "awaiting_pour"
+        elif anomaly:
+            ms = "anomaly"
+        else:
+            ms = "complete"
+        weight_delta_pct = None
+        if matched_total is not None and t.net_weight:
+            weight_delta_pct = ((matched_total - float(t.net_weight))
+                                / float(t.net_weight)) * 100.0
+        enriched_rows.append({
+            **_row_to_dict(t, WbatnglTripMirror),
+            "match_status": ms,
+            "first_heat_no": heats[0].heat_no if heats else None,
+            "matched_heat_count": match_count,
+            "matched_hotmetal_total_mt": matched_total,
+            "weight_delta_pct": (
+                round(weight_delta_pct, 2)
+                if weight_delta_pct is not None else None
+            ),
+            "_matched_converters": {h.converter_no for h in heats if h.converter_no},
+        })
+
+    # Post-filter by status / converter. Caveat: these filters narrow the
+    # *current page* because enrichment runs after pagination. For v1 the
+    # page_size cap of 200 keeps the visible window large enough; this
+    # filtering will move down to SQL in Phase 5 if it becomes pain.
+    if status != "all":
+        enriched_rows = [r for r in enriched_rows if r["match_status"] == status]
+    if converter and converter != "all":
+        enriched_rows = [r for r in enriched_rows
+                         if converter in r["_matched_converters"]]
+    for r in enriched_rows:
+        r.pop("_matched_converters", None)
+
+    # When a post-filter is active, recompute total from the visible page
+    # (acknowledged v1 limitation — see caveat above).
+    final_total = (
+        total
+        if (status == "all" and (not converter or converter == "all"))
+        else len(enriched_rows)
+    )
 
     return {
-        "rows": rows,
+        "rows": enriched_rows,
         "page": page,
         "page_size": page_size,
-        "total": total,
+        "total": final_total,
         "last_sync_at": _last_sync_at(db),
     }
