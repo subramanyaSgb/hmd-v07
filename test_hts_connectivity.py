@@ -106,7 +106,12 @@ def main():
 
     host = "10.10.70.227"
     port = 1522
-    user = "ITROSYSP"
+    # ICT_IFACE (underscore) is the HTS user, NOT ITROSYSP. ITROSYSP is the
+    # WBATNGL user. Per Hari Prasad's 03-Apr-2026 email, HTS user is ICT_IFACE
+    # with password ICTIFACE (no underscore). The 06-May and 11-May tests
+    # used the wrong username, which is why every attempt looked like a
+    # server failure.
+    user = "ICT_IFACE"
 
     print(f"\nTarget : {host}:{port}")
     print(f"User   : {user}")
@@ -126,38 +131,46 @@ def main():
         print("[FAIL] No password entered. Aborting.")
         return 1
 
-    # Step 3: Try variations
+    # Step 3: Try variations. The 11-May test (with wrong ITROSYSP user)
+    # showed that JVMLPROD.JSW.IN and SID=JVMLPROD both reach the auth
+    # layer (returned ORA-01017). With the correct ICT_IFACE user now,
+    # those two should succeed; the short-name JVMLPROD variations may
+    # still fail (stale listener registration).
     print("\n" + "=" * 68)
     print("  ORACLE CONNECTION TRIALS (7 variations)")
     print("=" * 68)
-    print("  If they all fail with ORA-01034/ORA-27101, the issue is server-side.")
-    print("  If ANY one succeeds, we have the correct format.")
+    print("  Looking for the variation(s) that return [OK] CONNECTED.")
+    print("  ORA-01017 = wrong password (re-check credentials).")
+    print("  ORA-01034 = stale listener registration (skip that variation).")
+    print("  ORA-12514 = service name not registered (skip that variation).")
 
     attempts = [
-        # Easy Connect variations
-        ("Easy Connect, SERVICE_NAME = JVMLPROD",
+        # FQDN: proved reachable on 11-May test (returned ORA-01017
+        # because the wrong username was used).
+        ("Easy Connect, SERVICE_NAME = JVMLPROD.JSW.IN  (FQDN -- primary candidate)",
+         f"{host}:{port}/JVMLPROD.JSW.IN"),
+
+        # SID-based connection: also proved reachable on 11-May test.
+        ("TNS descriptor with SID = JVMLPROD  (SID-based -- secondary candidate)",
+         f"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port}))"
+         f"(CONNECT_DATA=(SID=JVMLPROD)))"),
+
+        # Short name: failed with ORA-01034 last time, kept for comparison
+        ("Easy Connect, SERVICE_NAME = JVMLPROD  (short name -- likely stale)",
          f"{host}:{port}/JVMLPROD"),
 
         ("Easy Connect, SERVICE_NAME = jvmlprod (lowercase)",
          f"{host}:{port}/jvmlprod"),
 
-        ("Easy Connect, SERVICE_NAME = JVMLPROD.JSW.IN",
-         f"{host}:{port}/JVMLPROD.JSW.IN"),
-
-        # Full TNS descriptors
         ("TNS descriptor with SERVICE_NAME = JVMLPROD",
          f"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port}))"
          f"(CONNECT_DATA=(SERVICE_NAME=JVMLPROD)))"),
 
-        ("TNS descriptor with SID = JVMLPROD",
-         f"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port}))"
-         f"(CONNECT_DATA=(SID=JVMLPROD)))"),
-
-        # Alternative service names
-        ("Easy Connect, SERVICE_NAME = HTS",
+        # Sanity: alternative service names we already know are NOT registered
+        ("Easy Connect, SERVICE_NAME = HTS  (not registered -- sanity)",
          f"{host}:{port}/HTS"),
 
-        ("Easy Connect, SERVICE_NAME = jvmldev (commonly-paired dev instance)",
+        ("Easy Connect, SERVICE_NAME = jvmldev  (not registered -- sanity)",
          f"{host}:{port}/jvmldev"),
     ]
 
