@@ -169,3 +169,81 @@ class TestDashboardSkeleton:
         assert kpis["active_trips_now"] == 0
         assert kpis["heats_in_progress"] == 0
         assert kpis["idle_torpedoes"] == 0
+
+
+class TestDashboardKpiStrip:
+    def test_production_today_sums_net_weight(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow().replace(hour=10, minute=0, second=0, microsecond=0)
+        trip_at("T1", "TLC-22", closetime=t, net_weight=300.0, updated_date=t)
+        trip_at("T2", "TLC-23", closetime=t, net_weight=200.0, updated_date=t)
+        # One trip outside today → should NOT be summed
+        old = datetime.utcnow() - timedelta(days=2)
+        trip_at("T_OLD", "TLC-24", closetime=old, net_weight=999.0,
+                updated_date=old)
+
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        kpis = r.json()["kpi_strip"]
+        assert kpis["production_today_mt"] == 500.0
+
+    def test_consumption_today_sums_hotmetal_qty(
+            self, db_session, client, auth_headers, heat_at):
+        t = datetime.utcnow().replace(hour=11, minute=0, second=0, microsecond=0)
+        heat_at("D1", "TLC-22", torpedo_in_time=t, hotmetal_qty=126.0)
+        heat_at("E1", "TLC-22", torpedo_in_time=t, hotmetal_qty=172.0)
+        old = datetime.utcnow() - timedelta(days=2)
+        heat_at("D_OLD", "TLC-22", torpedo_in_time=old, hotmetal_qty=500.0)
+
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        kpis = r.json()["kpi_strip"]
+        assert kpis["consumption_today_mt"] == 298.0
+
+    def test_heats_in_progress_counts_null_torpedo_out_time(
+            self, db_session, client, auth_headers, heat_at):
+        t = datetime.utcnow()
+        heat_at("D1", "TLC-22", torpedo_in_time=t,
+                torpedo_out_time=None)                 # in progress
+        heat_at("E1", "TLC-23", torpedo_in_time=t,
+                torpedo_out_time=t + timedelta(minutes=10))  # done
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.json()["kpi_strip"]["heats_in_progress"] == 1
+
+    def test_active_trips_now_excludes_matched_trips(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow()
+        trip_at("T1", "TLC-22", closetime=t)
+        # Heat matches T1 → T1 should NOT count as active
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5))
+        # T2 has out_date but no matching heat → active
+        trip_at("T2", "TLC-23", closetime=t)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.json()["kpi_strip"]["active_trips_now"] == 1
+
+    def test_active_trips_now_excludes_in_flight_no_closetime(
+            self, db_session, client, auth_headers, trip_at):
+        # out_date set but closetime null → in-flight (no matching window yet)
+        # design says active = "out_date NOT NULL and no matching heat" — so
+        # this still counts as active.
+        t = datetime.utcnow()
+        trip_at("T1", "TLC-22", out_date=t, closetime=None, updated_date=t)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.json()["kpi_strip"]["active_trips_now"] == 1
+
+    def test_idle_torpedoes_uses_latest_per_fleet(
+            self, db_session, client, auth_headers):
+        from backend.database.models import FleetLiveLocation
+        now = datetime.utcnow()
+        # Two snapshots for TLC-22: earlier=Moving, later=Idle → latest=Idle
+        db_session.add_all([
+            FleetLiveLocation(fleet_id="TLC-22", type="Idle",
+                              x=1.0, y=1.0, last_updated=now),
+            FleetLiveLocation(fleet_id="TLC-22", type="Moving",
+                              x=1.0, y=1.0,
+                              last_updated=now - timedelta(minutes=5)),
+            FleetLiveLocation(fleet_id="TLC-23", type="Moving",
+                              x=1.0, y=1.0, last_updated=now),
+        ])
+        db_session.commit()
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        # TLC-22 idle counts, TLC-23 moving does not
+        assert r.json()["kpi_strip"]["idle_torpedoes"] == 1

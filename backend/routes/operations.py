@@ -148,13 +148,66 @@ async def operations_live_dashboard(
     if cached is not None:
         return cached
 
+    today_cutoff = datetime.utcnow().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # KPI strip
+    production_today = db.query(
+        func.coalesce(func.sum(WbatnglTripMirror.net_weight), 0.0)
+    ).filter(WbatnglTripMirror.updated_date >= today_cutoff).scalar()
+
+    consumption_today = db.query(
+        func.coalesce(func.sum(HtsHeatMirror.hotmetal_qty), 0.0)
+    ).filter(HtsHeatMirror.torpedo_in_time >= today_cutoff).scalar()
+
+    heats_in_progress = db.query(HtsHeatMirror).filter(
+        HtsHeatMirror.torpedo_out_time.is_(None),
+    ).count()
+
+    # Active trips = out_date NOT NULL AND no matched heat in window.
+    # Compute in Python — small N (typically <20 active trips at a time).
+    candidate_trips = (
+        db.query(WbatnglTripMirror)
+        .filter(WbatnglTripMirror.out_date.isnot(None))
+        .order_by(WbatnglTripMirror.out_date.desc())
+        .limit(200)
+        .all()
+    )
+    active_trip_rows = [t for t in candidate_trips
+                        if not find_matched_heats(db, t)]
+    active_trips_now = len(active_trip_rows)
+
+    # Idle torpedoes — latest FleetLiveLocation per fleet_id where type='Idle'.
+    # Cross-dialect "row_number()-style" via correlated subquery.
+    latest_per_fleet = (
+        db.query(
+            FleetLiveLocation.fleet_id,
+            func.max(FleetLiveLocation.last_updated).label("mx"),
+        )
+        .group_by(FleetLiveLocation.fleet_id)
+        .subquery()
+    )
+    idle_torpedoes = (
+        db.query(FleetLiveLocation)
+        .join(
+            latest_per_fleet,
+            and_(
+                FleetLiveLocation.fleet_id == latest_per_fleet.c.fleet_id,
+                FleetLiveLocation.last_updated == latest_per_fleet.c.mx,
+            ),
+        )
+        .filter(FleetLiveLocation.type == "Idle")
+        .count()
+    )
+
     payload = {
         "kpi_strip": {
-            "production_today_mt": 0.0,
-            "consumption_today_mt": 0.0,
-            "active_trips_now": 0,
-            "heats_in_progress": 0,
-            "idle_torpedoes": 0,
+            "production_today_mt": float(production_today or 0.0),
+            "consumption_today_mt": float(consumption_today or 0.0),
+            "active_trips_now": active_trips_now,
+            "heats_in_progress": heats_in_progress,
+            "idle_torpedoes": idle_torpedoes,
         },
         "converters": [_build_empty_converter_card(c) for c in CONVERTERS],
         "active_trips": [],
