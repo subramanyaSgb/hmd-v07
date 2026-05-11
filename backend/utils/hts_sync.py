@@ -218,15 +218,31 @@ def run_once() -> dict:
     db = SessionLocal()
     try:
         cur = conn.cursor()
-        wm = watermark_for_view(db)
-        stats = pull_and_upsert(db, cur, wm)
-        logger.info(
-            f"HTS sync OK: fetched={stats['fetched']} "
-            f"upserted={stats['upserted']} "
-            f"skipped={stats['skipped_no_heat_no']} "
-            f"errors={stats['errors']} watermark_was={wm}"
-        )
-        cur.close()
+        try:
+            wm = watermark_for_view(db)
+            stats = pull_and_upsert(db, cur, wm)
+            logger.info(
+                f"HTS sync OK: fetched={stats['fetched']} "
+                f"upserted={stats['upserted']} "
+                f"skipped={stats['skipped_no_heat_no']} "
+                f"errors={stats['errors']} watermark_was={wm}"
+            )
+        except Exception as e:
+            # Critical: PG marks the whole transaction as aborted on any
+            # error, so a pooled session reused without rollback would
+            # raise InFailedSqlTransaction on its next statement. Rollback
+            # so the next tick starts fresh.
+            try:
+                db.rollback()
+            except Exception:
+                logger.exception("HTS rollback failed (non-fatal)")
+            logger.exception(f"HTS pull/upsert failed: {e}")
+            return {"error": str(e)}
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
     finally:
         db.close()
         try:
