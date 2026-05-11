@@ -552,3 +552,65 @@ class TestTripHistoryLiveEnrichment:
         )
         ids = {r_["trip_id"] for r_ in r.json()["rows"]}
         assert ids == {"T_D"}
+
+
+class TestTripHistoryLiveFilters:
+    @pytest.fixture
+    def seeded(self, db_session, trip_at):
+        t = datetime.utcnow() - timedelta(minutes=30)
+        trip_at("BF3_SMS3", "TLC-22", closetime=t,
+                source_lab="BF3", destination="SMS3", shift="A")
+        trip_at("BF4_SMS2", "TLC-23",
+                closetime=t + timedelta(minutes=1),
+                source_lab="BF4", destination="SMS2", shift="B")
+        trip_at("BF3_SMS2", "TLC-22",
+                closetime=t + timedelta(minutes=2),
+                source_lab="BF3", destination="SMS2", shift="C")
+        return None
+
+    def test_source_lab_filter(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&source_lab=BF3",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert ids == {"BF3_SMS3", "BF3_SMS2"}
+
+    def test_destination_filter(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&destination=SMS2",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert ids == {"BF4_SMS2", "BF3_SMS2"}
+
+    def test_shift_filter(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&shift=A",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert ids == {"BF3_SMS3"}
+
+    def test_fleet_id_filter(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&fleet_id=TLC-22",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert ids == {"BF3_SMS3", "BF3_SMS2"}
+
+    def test_search_matches_trip_id(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&q=BF4",
+            headers=auth_headers,
+        )
+        ids = {r_["trip_id"] for r_ in r.json()["rows"]}
+        assert "BF4_SMS2" in ids
+
+    def test_all_value_treats_as_no_filter(self, seeded, client, auth_headers):
+        r = client.get(
+            "/api/trip-history-live?time_window=30d&source_lab=all",
+            headers=auth_headers,
+        )
+        assert r.json()["total"] == 3
