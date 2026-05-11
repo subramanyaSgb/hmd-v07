@@ -25,7 +25,7 @@ from .utils.errors import (
     hmd_exception_handler,
     validation_exception_handler
 )
-from .routes import auth, locations, fleet, users, config, system, logs, notifications, maintenance, reports, live_operations, converters, jsw
+from .routes import auth, locations, fleet, users, config, system, logs, notifications, maintenance, reports, live_operations, converters, jsw, operations
                                            
 from .routes import daily_plans, plans
 from .routes import statistics, deviation_analytics, performance_analytics
@@ -450,6 +450,7 @@ app.include_router(reports.router)
 app.include_router(live_operations.router)
 app.include_router(converters.router)
 app.include_router(jsw.router)
+app.include_router(operations.router)
 
 app.include_router(whatsapp.router)
 

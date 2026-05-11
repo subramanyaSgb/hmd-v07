@@ -142,3 +142,30 @@ class TestComputeAnomalyFlags:
         # Defensive: division-by-zero must not crash
         assert compute_anomaly_flags(net_weight_mt=0.0,
                                       matched_total_mt=12.0) == []
+
+
+class TestDashboardSkeleton:
+    def test_returns_200_with_full_shape(self, db_session, client, auth_headers):
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        for key in ("kpi_strip", "converters", "active_trips",
+                    "activity_feed", "last_sync_at"):
+            assert key in body, f"missing key {key!r}"
+        # converters always returns exactly 6 entries (D..I), even if empty
+        assert [c["converter_no"] for c in body["converters"]] == list("DEFGHI")
+        # last_sync_at has both source labels
+        assert set(body["last_sync_at"]) == {"wbatngl", "hts"}
+
+    def test_unauthenticated_rejected(self, client):
+        r = client.get("/api/operations-live/dashboard")
+        assert r.status_code == 401
+
+    def test_empty_db_kpis_all_zero(self, db_session, client, auth_headers):
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        kpis = r.json()["kpi_strip"]
+        assert kpis["production_today_mt"] == 0.0
+        assert kpis["consumption_today_mt"] == 0.0
+        assert kpis["active_trips_now"] == 0
+        assert kpis["heats_in_progress"] == 0
+        assert kpis["idle_torpedoes"] == 0

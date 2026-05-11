@@ -120,3 +120,49 @@ def compute_anomaly_flags(net_weight_mt: Optional[float],
                 ),
             })
     return flags
+
+
+def _last_sync_at(db: Session) -> dict:
+    return {
+        "wbatngl": db.query(func.max(WbatnglTripMirror.synced_at)).scalar(),
+        "hts":     db.query(func.max(HtsHeatMirror.synced_at)).scalar(),
+    }
+
+
+def _build_empty_converter_card(letter: str) -> dict:
+    return {
+        "converter_no": letter, "sms": None, "state": "IDLE",
+        "current_heat_no": None, "current_torpedo": None,
+        "elapsed_minutes": None, "hotmetal_received_mt": None,
+        "last_heat_no": None, "last_heat_at": None,
+        "heats_today": 0,
+    }
+
+
+@router.get("/api/operations-live/dashboard")
+async def operations_live_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_required),
+):
+    cached = fleet_cache.get(CACHE_KEY_DASHBOARD)
+    if cached is not None:
+        return cached
+
+    payload = {
+        "kpi_strip": {
+            "production_today_mt": 0.0,
+            "consumption_today_mt": 0.0,
+            "active_trips_now": 0,
+            "heats_in_progress": 0,
+            "idle_torpedoes": 0,
+        },
+        "converters": [_build_empty_converter_card(c) for c in CONVERTERS],
+        "active_trips": [],
+        "activity_feed": [],
+        "last_sync_at": _last_sync_at(db),
+    }
+    try:
+        fleet_cache.set(CACHE_KEY_DASHBOARD, payload, DASHBOARD_CACHE_TTL_SEC)
+    except Exception:
+        logger.exception("ops-live dashboard: cache set failed (non-fatal)")
+    return payload
