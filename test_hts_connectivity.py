@@ -64,16 +64,48 @@ def test_tcp(host, port):
 
 
 def try_connect(label, dsn, user, password):
-    """Attempt one Oracle connection; print result; return success bool."""
+    """Attempt one Oracle connection; print result; return success bool.
+
+    Uses SELECT USER FROM DUAL as the sanity query because every Oracle
+    user — DBA or end-user — is granted SELECT on SYS.DUAL. (V$INSTANCE
+    needs DBA privileges; ICT_IFACE is an end-user with access only to
+    its granted views, so the earlier V$INSTANCE query failed with
+    ORA-00942 even though the connection itself was healthy.)
+
+    After the sanity query succeeds, also tries the actual target view
+    HTS.VW_HTS_HOTMETAL_DATA so we know not just that login works, but
+    that the data we care about is reachable.
+    """
     import oracledb
     print(f"\n--- {label} ---")
     print(f"  DSN: {dsn}")
     try:
         conn = oracledb.connect(user=user, password=password, dsn=dsn)
         cur = conn.cursor()
-        cur.execute("SELECT INSTANCE_NAME, STATUS FROM V$INSTANCE")
-        row = cur.fetchone()
-        print(f"  [OK] CONNECTED — Instance: {row[0]} | Status: {row[1]}")
+        # Sanity query — every user can run this.
+        cur.execute("SELECT USER FROM DUAL")
+        logged_in_as = cur.fetchone()[0]
+        print(f"  [OK] CONNECTED — logged in as: {logged_in_as}")
+
+        # Now probe the actual view we care about.
+        try:
+            cur.execute("SELECT COUNT(*) FROM HTS.VW_HTS_HOTMETAL_DATA")
+            cnt = cur.fetchone()[0]
+            print(f"  [OK] HTS.VW_HTS_HOTMETAL_DATA accessible — {cnt:,} rows")
+
+            # Pull 3 sample rows so we can verify column shape too
+            cur.execute("SELECT * FROM HTS.VW_HTS_HOTMETAL_DATA "
+                        "WHERE ROWNUM <= 3")
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+            print(f"  Columns ({len(cols)}): {', '.join(cols[:10])}"
+                  + (' ...' if len(cols) > 10 else ''))
+            print(f"  Got {len(rows)} sample rows.")
+        except oracledb.DatabaseError as ve:
+            err = str(ve).split("\n")[0].strip()
+            print(f"  [WARN] Login OK but HTS view not reachable: {err}")
+            print(f"  (Connection works; ICT_IFACE may need SELECT grant on HTS.VW_HTS_HOTMETAL_DATA.)")
+
         cur.close()
         conn.close()
         return True
