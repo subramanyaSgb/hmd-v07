@@ -281,6 +281,53 @@ async def operations_live_dashboard(
             }
         converter_cards.append(card)
 
+    # active_trip_rows was computed during KPI strip — reuse, don't re-query.
+    # Build a per-torpedo lookup of latest FleetLiveLocation.type.
+    torpedo_ids = [t.fleet_id for t in active_trip_rows if t.fleet_id]
+    latest_status_by_fleet = {}
+    if torpedo_ids:
+        latest_per_fleet_sq = (
+            db.query(
+                FleetLiveLocation.fleet_id,
+                func.max(FleetLiveLocation.last_updated).label("mx"),
+            )
+            .filter(FleetLiveLocation.fleet_id.in_(torpedo_ids))
+            .group_by(FleetLiveLocation.fleet_id)
+            .subquery()
+        )
+        rows = (
+            db.query(FleetLiveLocation)
+            .join(
+                latest_per_fleet_sq,
+                and_(
+                    FleetLiveLocation.fleet_id == latest_per_fleet_sq.c.fleet_id,
+                    FleetLiveLocation.last_updated == latest_per_fleet_sq.c.mx,
+                ),
+            )
+            .all()
+        )
+        latest_status_by_fleet = {r.fleet_id: r.type for r in rows}
+
+    active_trips_payload = []
+    now = datetime.utcnow()
+    for t in active_trip_rows[:50]:                     # cap at 50 for UI
+        elapsed_min = (
+            int((now - t.out_date).total_seconds() // 60)
+            if t.out_date else None
+        )
+        active_trips_payload.append({
+            "trip_id": t.trip_id,
+            "torpedo_no": t.fleet_id,
+            "source_lab": t.source_lab,
+            "destination": t.destination,
+            "net_weight_mt": (
+                float(t.net_weight) if t.net_weight is not None else None
+            ),
+            "out_date": t.out_date,
+            "elapsed_minutes": elapsed_min,
+            "current_status": latest_status_by_fleet.get(t.fleet_id),
+        })
+
     payload = {
         "kpi_strip": {
             "production_today_mt": float(production_today or 0.0),
@@ -290,7 +337,7 @@ async def operations_live_dashboard(
             "idle_torpedoes": idle_torpedoes,
         },
         "converters": converter_cards,
-        "active_trips": [],
+        "active_trips": active_trips_payload,
         "activity_feed": [],
         "last_sync_at": _last_sync_at(db),
     }

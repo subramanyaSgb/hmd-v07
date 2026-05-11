@@ -305,3 +305,55 @@ class TestDashboardConverters:
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         d = _converter_by(r.json(), "D")
         assert d["last_heat_no"] == "D_NEW"
+
+
+class TestDashboardActiveTrips:
+    def test_active_trips_includes_unmatched_with_out_date(
+            self, db_session, client, auth_headers, trip_at):
+        t = datetime.utcnow() - timedelta(minutes=30)
+        trip_at("T1", "TLC-22", closetime=t, out_date=t - timedelta(minutes=10),
+                source_lab="BF3", destination="SMS3", net_weight=368.0)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        active = r.json()["active_trips"]
+        assert len(active) == 1
+        row = active[0]
+        assert row["trip_id"] == "T1"
+        assert row["torpedo_no"] == "TLC-22"
+        assert row["source_lab"] == "BF3"
+        assert row["destination"] == "SMS3"
+        assert row["net_weight_mt"] == 368.0
+        # elapsed since out_date, ~40 minutes (30 + 10)
+        assert 38 <= row["elapsed_minutes"] <= 42
+
+    def test_active_trips_excludes_matched(
+            self, db_session, client, auth_headers, trip_at, heat_at):
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-22", closetime=t)
+        heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.json()["active_trips"] == []
+
+    def test_active_trips_sorted_out_date_desc(
+            self, db_session, client, auth_headers, trip_at):
+        now = datetime.utcnow()
+        trip_at("OLD", "TLC-22", closetime=now - timedelta(hours=3),
+                out_date=now - timedelta(hours=3, minutes=10))
+        trip_at("NEW", "TLC-23", closetime=now - timedelta(minutes=10),
+                out_date=now - timedelta(minutes=20))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        ids = [t["trip_id"] for t in r.json()["active_trips"]]
+        assert ids == ["NEW", "OLD"]
+
+    def test_active_trips_current_status_from_fleet_live(
+            self, db_session, client, auth_headers, trip_at):
+        from backend.database.models import FleetLiveLocation
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-22", closetime=t,
+                out_date=t - timedelta(minutes=10))
+        db_session.add(FleetLiveLocation(
+            fleet_id="TLC-22", type="Moving",
+            x=1.0, y=1.0, last_updated=datetime.utcnow(),
+        ))
+        db_session.commit()
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        assert r.json()["active_trips"][0]["current_status"] == "Moving"
