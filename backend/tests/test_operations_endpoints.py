@@ -446,6 +446,22 @@ class TestDashboardActivityFeed:
         starts = [e for e in events if e["type"] == "heat_started"]
         assert any(e["ref_id"] == "D1" for e in starts)
 
+    def test_activity_feed_uses_ascii_arrow(
+            self, db_session, client, auth_headers, trip_at):
+        # Bug 4: trip_completed summary used U+2192 ('→'), which renders
+        # as mojibake under Windows cmd code pages (CP 437/850). Use ASCII
+        # '->' so the SMS4 PC operator console reads correctly.
+        t = _ist_now() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t,
+                source_lab="BF3", destination="SMS3", net_weight=368.0)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        events = r.json()["activity_feed"]
+        completes = [e for e in events if e["type"] == "trip_completed"]
+        assert any(e["ref_id"] == "T1" for e in completes)
+        target = next(e for e in completes if e["ref_id"] == "T1")
+        assert "->" in target["summary"]
+        assert "→" not in target["summary"]   # the unicode arrow
+
     def test_feed_capped_at_20_reverse_chronological(
             self, db_session, client, auth_headers, trip_at, heat_at):
         base = _ist_now() - timedelta(minutes=50)

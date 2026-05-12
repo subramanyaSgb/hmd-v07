@@ -366,7 +366,7 @@ async def operations_live_dashboard(
             "type": "trip_completed",
             "at": t.closetime,
             "summary": (
-                f"{t.fleet_id or '?'} closed {t.source_lab or '?'} → "
+                f"{t.fleet_id or '?'} closed {t.source_lab or '?'} -> "
                 f"{t.destination or '?'}"
                 + (f" ({float(t.net_weight):.0f} MT)" if t.net_weight else "")
             ),
