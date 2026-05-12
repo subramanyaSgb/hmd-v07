@@ -155,16 +155,6 @@ def _last_sync_at(db: Session) -> dict:
     }
 
 
-def _build_empty_converter_card(letter: str) -> dict:
-    return {
-        "converter_no": letter, "sms": None, "state": "IDLE",
-        "current_heat_no": None, "current_torpedo": None,
-        "elapsed_minutes": None, "hotmetal_received_mt": None,
-        "last_heat_no": None, "last_heat_at": None,
-        "heats_today": 0,
-    }
-
-
 @router.get("/api/operations-live/dashboard")
 async def operations_live_dashboard(
     db: Session = Depends(get_db),
