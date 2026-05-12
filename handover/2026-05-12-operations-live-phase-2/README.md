@@ -212,3 +212,41 @@ Same as the Phase 2 deploy steps above: `git pull && restart backend`. No migrat
 - `backend/tests/test_operations_endpoints.py`: **65 tests** (was 60 at Phase 2 finish — net +5: -2 deleted in #68, +3 in #68, +1 in #69, +1 in #70, +2 in #71)
 - Full backend suite: **333 passed** (was 328 at Phase 2 finish)
 - App route count: **162** (unchanged)
+
+---
+
+## Update 2026-05-12 (later) — Polish + PG timezone fix
+
+After successful BF4 verification of the hotfix, two follow-ups landed on the same branch.
+
+### Code polish — 3 commits (#72 in changes_tracker)
+
+- **Dropped `_build_empty_converter_card`** — plan-prescribed skeleton helper that the real converter loop had stopped calling. Pure deletion, no behavioural change.
+- **`_PRIVATE_COLUMNS` filter on `_row_to_dict`** — `{"synced_at", "id", "source_table"}` are sync-engine implementation details. The serializer now strips them from API payloads so the frontend sees a cleaner contract. Scope kept to `operations.py` only — `jsw.py` unchanged (active production endpoint with consumers that may have bound to the old shape).
+- **New test** — `test_converter_card_sms_null_when_no_heat_row_has_sms` covers the converter card's graceful fallback when no heat row provides an `sms` value (relevant until Hari ships the new `sms` column at the JSW source side).
+
+Commits:
+```
+b74fc37  fix(ops-live): drop dead _build_empty_converter_card helper
+79c5708  fix(ops-live): strip sync-plumbing columns from _row_to_dict payloads + tests
+c685d88  docs(tracker): #72-#73 — Phase 2 polish + PG timezone fix
+```
+
+### PG timezone fix (#73 in changes_tracker) — environment change, not a code change
+
+Verification on BF4 exposed that `last_sync_at` looked 12.5 h stale even after the OS-clock-12h-behind-IST issue was fixed by JSW IT. Root cause: the BF4 PG instance was running with session timezone `UTC-7` (MST), not IST — so `func.now()` cast to `TIMESTAMP WITHOUT TIME ZONE` stored MST wall-clock values.
+
+Fix:
+1. `ALTER DATABASE hmd SET TIMEZONE TO 'Asia/Kolkata';`
+2. Backend restarted to flush the connection pool (so new sockets pick up the IST session TZ).
+3. One-shot bulk-shift of existing rows: `UPDATE wbatngl_trip_mirror SET synced_at = synced_at + interval '12 hours 30 minutes';` (3 907 rows) and same on `hts_heat_mirror` (123 rows).
+
+After: `pg_now=...+05:30`, `MAX(synced_at)` advances in IST, dashboard's `last_sync_at` reflects real wall-clock IST.
+
+**For any future PG instance hosting HMD:** run `ALTER DATABASE <dbname> SET TIMEZONE TO 'Asia/Kolkata'` as part of post-create setup. The WBATNGL/HTS Oracle sources serve IST-naive timestamps; the mirror must use the same TZ so `func.now()` writes consistently.
+
+### Test counts (post-polish)
+
+- `backend/tests/test_operations_endpoints.py`: **66 tests** (+1 sms-null fallback)
+- Full backend suite: **334 passed**
+- App route count: **162** (unchanged)
