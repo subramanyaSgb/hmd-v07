@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
-import { LayoutDashboard, Settings as SettingsIcon, ClipboardList, Truck, Activity, BarChart2, Container, FileText, Shield, Factory } from 'lucide-react'
+import { LayoutDashboard, Settings as SettingsIcon, ClipboardList, Truck, Activity, BarChart2, Container, FileText, Shield, Factory, History } from 'lucide-react'
 
 const Sidebar = () => {
     const { user, logout } = useAuth()
@@ -20,6 +20,7 @@ const Sidebar = () => {
         { path: '/trips', label: 'Trip Management', icon: <Truck size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
         { path: '/operations-live', label: 'Operations Live', icon: <Activity size={20} /> },
+        { path: '/trip-history-live', label: 'Trip History (Live)', icon: <History size={20} /> },
         { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/fleet', label: 'Torpedo Management', icon: <Container size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
@@ -34,6 +35,7 @@ const Sidebar = () => {
         { path: '/trips', label: 'Trip Management', icon: <Truck size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
         { path: '/operations-live', label: 'Operations Live', icon: <Activity size={20} /> },
+        { path: '/trip-history-live', label: 'Trip History (Live)', icon: <History size={20} /> },
         { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/fleet', label: 'Torpedo Management', icon: <Container size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
@@ -45,6 +47,7 @@ const Sidebar = () => {
         { path: '/statistics', label: 'Dashboard', icon: <BarChart2 size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
         { path: '/operations-live', label: 'Operations Live', icon: <Activity size={20} /> },
+        { path: '/trip-history-live', label: 'Trip History (Live)', icon: <History size={20} /> },
         { path: '/plant', label: 'Plant Live', icon: <Factory size={20} /> },
         { path: '/reports', label: 'Reports', icon: <FileText size={20} /> },
         { path: '/settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
@@ -55,6 +58,7 @@ const Sidebar = () => {
         { path: '/trips', label: 'Trip Management', icon: <Truck size={20} /> },
         { path: '/', label: 'Live Tracking', icon: <LayoutDashboard size={20} /> },
         { path: '/operations-live', label: 'Operations Live', icon: <Activity size={20} /> },
+        { path: '/trip-history-live', label: 'Trip History (Live)', icon: <History size={20} /> },
         { path: '/planning/daily', label: 'Daily Planning', icon: <ClipboardList size={20} /> },
         { path: '/operations', label: 'Operations Control', icon: <Activity size={20} /> },
         { path: '/settings', label: 'Settings', icon: <SettingsIcon size={20} /> },
