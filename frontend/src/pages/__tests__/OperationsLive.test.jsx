@@ -121,4 +121,25 @@ describe('OperationsLive — load + error states', () => {
       expect(screen.getByText(/TLC-35 closed/)).toBeInTheDocument()
     })
   })
+
+  it('renders LiveHeatsPanel with the 6 converters from the API', async () => {
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      converters: ['D','E','F','G','H','I'].map(letter => ({
+        converter_no: letter, sms: null, state: 'IDLE',
+        current_heat_no: null, current_torpedo: null,
+        elapsed_minutes: null, hotmetal_received_mt: null,
+        last_heat_no: `${letter}999`, last_heat_at: null,
+        heats_today: 0,
+      })),
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /live heats/i })).toBeInTheDocument()
+    })
+    // All 6 letters present
+    for (const letter of ['D','E','F','G','H','I']) {
+      expect(screen.getByText(letter)).toBeInTheDocument()
+    }
+  })
 })
