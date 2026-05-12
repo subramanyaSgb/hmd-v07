@@ -6,26 +6,38 @@ import pytest
 from backend.routes.operations import _time_window_to_cutoff
 
 
+# Mirror of backend.routes.operations._now_ist_naive — kept private to the
+# test module so we can compute IST-naive expected times without coupling
+# the test asserts to the production helper's import path. WBATNGL / HTS
+# source tables store IST-naive timestamps; the endpoint's time windows
+# now anchor on IST-naive "now", so the tests must as well.
+_TEST_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _ist_now():
+    return datetime.utcnow() + _TEST_IST_OFFSET
+
+
 class TestTimeWindow:
     def test_today(self):
         cutoff = _time_window_to_cutoff("today")
-        now = datetime.utcnow()
+        now = _ist_now()
         assert cutoff.date() == now.date()
         assert cutoff.hour == 0 and cutoff.minute == 0
 
     def test_24h(self):
         cutoff = _time_window_to_cutoff("24h")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(hours=23, minutes=59) <= delta <= timedelta(hours=24, minutes=1)
 
     def test_7d(self):
         cutoff = _time_window_to_cutoff("7d")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(days=6, hours=23) <= delta <= timedelta(days=7, hours=1)
 
     def test_30d(self):
         cutoff = _time_window_to_cutoff("30d")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(days=29, hours=23) <= delta <= timedelta(days=30, hours=1)
 
     def test_invalid_raises_400(self):
@@ -263,7 +275,9 @@ class TestDashboardConverters:
 
     def test_heat_in_progress_state(
             self, db_session, client, auth_headers, heat_at):
-        now = datetime.utcnow()
+        # Endpoint computes elapsed as _now_ist_naive() - torpedo_in_time —
+        # seed in the IST-naive frame so the elapsed_minutes assertion holds.
+        now = _ist_now()
         heat_at("D1", "TLC-22",
                 torpedo_in_time=now - timedelta(minutes=12),
                 torpedo_out_time=None,
@@ -310,7 +324,8 @@ class TestDashboardConverters:
 class TestDashboardActiveTrips:
     def test_active_trips_includes_unmatched_with_out_date(
             self, db_session, client, auth_headers, trip_at):
-        t = datetime.utcnow() - timedelta(minutes=30)
+        # IST-naive seeds — elapsed is computed against _now_ist_naive().
+        t = _ist_now() - timedelta(minutes=30)
         trip_at("T1", "TLC-22", closetime=t, out_date=t - timedelta(minutes=10),
                 source_lab="BF3", destination="SMS3", net_weight=368.0)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -362,7 +377,9 @@ class TestDashboardActiveTrips:
 class TestDashboardActivityFeed:
     def test_trip_close_event_appears(
             self, db_session, client, auth_headers, trip_at):
-        t = datetime.utcnow() - timedelta(minutes=20)
+        # Feed horizon is _now_ist_naive() - 2h; seed in IST-naive frame
+        # so the event lands within the horizon.
+        t = _ist_now() - timedelta(minutes=20)
         trip_at("T1", "TLC-22", closetime=t,
                 source_lab="BF3", destination="SMS3", net_weight=368.0)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -373,7 +390,7 @@ class TestDashboardActivityFeed:
 
     def test_heat_start_event_appears(
             self, db_session, client, auth_headers, heat_at):
-        t = datetime.utcnow() - timedelta(minutes=15)
+        t = _ist_now() - timedelta(minutes=15)
         heat_at("D1", "TLC-22", torpedo_in_time=t)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         events = r.json()["activity_feed"]
@@ -382,7 +399,7 @@ class TestDashboardActivityFeed:
 
     def test_feed_capped_at_20_reverse_chronological(
             self, db_session, client, auth_headers, trip_at, heat_at):
-        base = datetime.utcnow() - timedelta(minutes=50)
+        base = _ist_now() - timedelta(minutes=50)
         for i in range(15):
             trip_at(f"T{i}", f"TLC-{i:02d}",
                     closetime=base + timedelta(minutes=i))

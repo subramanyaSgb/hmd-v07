@@ -33,6 +33,21 @@ from ..utils.security import get_current_user_required
 
 router = APIRouter(tags=["operations-live"])
 
+# WBATNGL and HTS Oracle source tables store timestamps as IST-naive
+# wall-clock datetimes (no tzinfo, IST values). To compare with these in
+# elapsed-time / time-window calculations, we need "now" in the same
+# IST-naive frame. We do NOT convert IST timestamps to UTC at sync time
+# (that would break parity with the source-system clocks operators see in
+# WBATNGL); instead we shift our internal "now" anchor.
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _now_ist_naive() -> datetime:
+    """UTC now + 5:30 → IST wall-clock naive datetime, matching the
+    convention used by WBATNGL.OUT_DATE / HTS.TORPEDO_IN_TIME etc."""
+    return datetime.utcnow() + _IST_OFFSET
+
+
 # Trip ↔ heat matching window (must match the v_trip_heat_story view).
 MATCH_WINDOW_BEFORE = timedelta(minutes=15)
 MATCH_WINDOW_AFTER = timedelta(minutes=90)
@@ -57,8 +72,12 @@ TRIP_DETAIL_CACHE_TTL_SEC = 10
 
 
 def _time_window_to_cutoff(time_window: str) -> datetime:
-    """today / 24h / 7d / 30d → UTC cutoff datetime. Raises 400 otherwise."""
-    now = datetime.utcnow()
+    """today / 24h / 7d / 30d → IST-naive cutoff datetime. Raises 400 otherwise.
+
+    Compared against IST-naive WbatnglTripMirror.updated_date (etc.), so we
+    anchor on IST-naive "now" — see _now_ist_naive() above.
+    """
+    now = _now_ist_naive()
     if time_window == "today":
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
     if time_window == "24h":
@@ -156,7 +175,7 @@ async def operations_live_dashboard(
     if cached is not None:
         return cached
 
-    today_cutoff = datetime.utcnow().replace(
+    today_cutoff = _now_ist_naive().replace(
         hour=0, minute=0, second=0, microsecond=0
     )
 
@@ -245,7 +264,7 @@ async def operations_live_dashboard(
 
         if in_progress:
             elapsed_min = int(
-                (datetime.utcnow() - in_progress.torpedo_in_time).total_seconds() // 60
+                (_now_ist_naive() - in_progress.torpedo_in_time).total_seconds() // 60
             )
             card = {
                 "converter_no": letter,
@@ -309,7 +328,7 @@ async def operations_live_dashboard(
         latest_status_by_fleet = {r.fleet_id: r.type for r in rows}
 
     active_trips_payload = []
-    now = datetime.utcnow()
+    now = _now_ist_naive()
     for t in active_trip_rows[:50]:                     # cap at 50 for UI
         elapsed_min = (
             int((now - t.out_date).total_seconds() // 60)
@@ -329,7 +348,7 @@ async def operations_live_dashboard(
         })
 
     # Activity feed — last 20 events from the union of trip_close + heat_start.
-    feed_horizon = datetime.utcnow() - timedelta(hours=2)
+    feed_horizon = _now_ist_naive() - timedelta(hours=2)
 
     recent_closes = (
         db.query(WbatnglTripMirror)
