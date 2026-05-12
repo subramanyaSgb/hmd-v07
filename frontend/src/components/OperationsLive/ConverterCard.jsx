@@ -14,13 +14,17 @@ const ConverterCard = ({ data }) => {
     const stateColor = STATE_COLOR[data.state] || STATE_COLOR.IDLE
 
     return (
-        <div className="premium-card" style={{
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            minHeight: '160px',
-        }}>
+        <div
+            data-testid="converter-card"
+            data-converter={data.converter_no}
+            className="premium-card"
+            style={{
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                minHeight: '160px',
+            }}>
             {/* Header: letter + sms + state badge */}
             <div style={{
                 display: 'flex',
