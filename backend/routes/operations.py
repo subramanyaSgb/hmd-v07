@@ -601,7 +601,10 @@ async def trip_history_live_detail(
                 )
                 .first()
             )
-            current_pos["status"] = fm.status if fm else None
+            # Use `current_status` (same key name as on active_trips[] rows)
+            # so the frontend sees one consistent field for "what is this
+            # torpedo doing right now" across both endpoints.
+            current_pos["current_status"] = fm.status if fm else None
 
     payload = {
         "trip": _row_to_dict(trip, WbatnglTripMirror),

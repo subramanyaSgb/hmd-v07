@@ -764,3 +764,47 @@ class TestTripDetailContent:
         trip_at("T1", "TLC-NO-LOC", closetime=t)
         r = client.get("/api/trip-history-live/T1", headers=auth_headers)
         assert r.json()["current_torpedo_position"] is None
+
+    def test_current_position_includes_current_status_from_fm(
+            self, db_session, client, auth_headers, trip_at):
+        """Detail endpoint mirrors active_trips[].current_status semantics:
+        position.current_status comes from FleetManagement.status, not from
+        the entity-type column on FleetLiveLocation."""
+        from backend.database.models import FleetLiveLocation, FleetManagement
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-22", closetime=t)
+        db_session.add_all([
+            FleetLiveLocation(
+                fleet_id="TLC-22", type="torpedo", x=12.3, y=45.6,
+                last_updated=datetime.utcnow(),
+            ),
+            FleetManagement(
+                fleet_id="TLC-22", type="torpedo",
+                status="Moving", capacity=350.0,
+            ),
+        ])
+        db_session.commit()
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        pos = r.json()["current_torpedo_position"]
+        assert pos["fleet_id"] == "TLC-22"
+        assert pos["x"] == 12.3 and pos["y"] == 45.6
+        # The new contract: current_status is the FleetManagement value.
+        assert pos["current_status"] == "Moving"
+
+    def test_current_position_current_status_none_when_no_fm_row(
+            self, db_session, client, auth_headers, trip_at):
+        """When the torpedo has a GPS row but no FleetManagement row
+        (e.g. a brand-new fleet_id observed by SuVeechi before the fleet
+        seed runs), current_status falls back to None gracefully."""
+        from backend.database.models import FleetLiveLocation
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-NEW-99", closetime=t)
+        db_session.add(FleetLiveLocation(
+            fleet_id="TLC-NEW-99", type="torpedo", x=1.0, y=2.0,
+            last_updated=datetime.utcnow(),
+        ))
+        db_session.commit()
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        pos = r.json()["current_torpedo_position"]
+        assert pos["fleet_id"] == "TLC-NEW-99"
+        assert pos["current_status"] is None
