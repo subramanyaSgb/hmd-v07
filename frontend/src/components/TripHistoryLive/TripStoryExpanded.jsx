@@ -75,9 +75,10 @@ const StageDot = ({ label, isFirst, isLast, lines = [] }) => (
 )
 
 const stageLines = (data) => {
-    const t = data.trip
-    const firstHeat = data.matched_heats[0]
-    const totalPoured = data.matched_heats.reduce(
+    const t = data.trip || {}
+    const heats = Array.isArray(data.matched_heats) ? data.matched_heats : []
+    const firstHeat = heats[0]
+    const totalPoured = heats.reduce(
         (acc, h) => acc + (Number.isFinite(Number(h.hotmetal_qty)) ? Number(h.hotmetal_qty) : 0),
         0
     )
@@ -134,6 +135,12 @@ const TripStoryExpanded = ({ data, loading, error }) => {
     }
     if (!data) return null
 
+    // Defensive defaults — the detail endpoint may return partial data
+    // mid-poll or while a downstream join is still hydrating.
+    const trip = data.trip || {}
+    const matchedHeats = Array.isArray(data.matched_heats) ? data.matched_heats : []
+    const anomalyFlags = Array.isArray(data.anomaly_flags) ? data.anomaly_flags : []
+
     const lines = stageLines(data)
 
     return (
@@ -145,7 +152,7 @@ const TripStoryExpanded = ({ data, loading, error }) => {
             gap: '20px',
         }}>
             {/* Anomaly callout (if any) */}
-            {data.anomaly_flags && data.anomaly_flags.length > 0 && (
+            {anomalyFlags.length > 0 && (
                 <div style={{
                     padding: '12px 16px',
                     borderRadius: '8px',
@@ -159,7 +166,7 @@ const TripStoryExpanded = ({ data, loading, error }) => {
                 }}>
                     <AlertTriangle size={18} />
                     <div>
-                        {data.anomaly_flags.map((f, i) => (
+                        {anomalyFlags.map((f, i) => (
                             <div key={i}>{f.message}</div>
                         ))}
                     </div>
@@ -191,9 +198,9 @@ const TripStoryExpanded = ({ data, loading, error }) => {
                 paddingTop: '8px',
                 borderTop: '1px solid hsl(var(--border-color))',
             }}>
-                <ChemistryPill label="TEMP" value={fmt1(data.trip.temp)} unit="°C" />
-                <ChemistryPill label="S"    value={fmt3(data.trip.s_l)} unit="%" />
-                <ChemistryPill label="Si"   value={fmt3(data.trip.si_l)} unit="%" />
+                <ChemistryPill label="TEMP" value={fmt1(trip.temp)} unit="°C" />
+                <ChemistryPill label="S"    value={fmt3(trip.s_l)} unit="%" />
+                <ChemistryPill label="Si"   value={fmt3(trip.si_l)} unit="%" />
             </div>
 
             {/* Current torpedo position */}
@@ -224,15 +231,15 @@ const TripStoryExpanded = ({ data, loading, error }) => {
                     letterSpacing: '0.05em',
                     marginBottom: '8px',
                 }}>
-                    Matched Heats {data.matched_heats.length > 0 && `(${data.matched_heats.length})`}
+                    Matched Heats {matchedHeats.length > 0 && `(${matchedHeats.length})`}
                 </div>
-                {data.matched_heats.length === 0 ? (
+                {matchedHeats.length === 0 ? (
                     <div style={{ color: 'hsl(var(--text-muted))', fontSize: '13px' }}>
                         No matched heats for this trip yet.
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {data.matched_heats.map(h => (
+                        {matchedHeats.map(h => (
                             <div key={h.heat_no} style={{
                                 display: 'flex',
                                 gap: '12px',

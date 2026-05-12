@@ -5,6 +5,8 @@ import { formatRelative } from '../utils/time'
 import TripListTable from '../components/TripHistoryLive/TripListTable'
 import Pagination from '../components/TripHistoryLive/Pagination'
 import FilterBar from '../components/TripHistoryLive/FilterBar'
+import useTripDetail from '../components/TripHistoryLive/useTripDetail'
+import TripStoryExpanded from '../components/TripHistoryLive/TripStoryExpanded'
 
 const LIST_POLL_INTERVAL_MS = 30_000   // list refresh; most rows are historical
 const TICK_MS = 1_000
@@ -47,6 +49,8 @@ const TripHistoryLive = () => {
     // or by a click handler (no URL change, just inline state). For now in
     // Batch B we only honor the URL; Batch D adds inline click expansion.
     const expandedTripId = trip_id_from_url || null
+    const { data: detail, loading: detailLoading, error: detailError } =
+        useTripDetail(expandedTripId)
 
     const updateParams = (mut) => {
         const next = new URLSearchParams(searchParams)
@@ -173,7 +177,9 @@ const TripHistoryLive = () => {
                 onPageChange={handlePageChange}
             />
 
-            {/* TripStoryExpanded slot — Batch D wires this in */}
+            {expandedTripId && (
+                <TripStoryExpanded data={detail} loading={detailLoading} error={detailError} />
+            )}
 
             <span style={{ display: 'none' }}>{tick}</span>
         </div>

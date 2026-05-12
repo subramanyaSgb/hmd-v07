@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import TripHistoryLive from '../TripHistoryLive'
 
 vi.mock('../../utils/api', () => ({
@@ -11,7 +11,10 @@ import { api } from '../../utils/api'
 
 const renderAt = (path) => render(
   <MemoryRouter initialEntries={[path]}>
-    <TripHistoryLive />
+    <Routes>
+      <Route path="/trip-history-live" element={<TripHistoryLive />} />
+      <Route path="/trip-history-live/:trip_id" element={<TripHistoryLive />} />
+    </Routes>
   </MemoryRouter>
 )
 
@@ -206,5 +209,44 @@ describe('TripHistoryLive — list integration', () => {
         })
         expect(api.get.mock.calls[1][0]).toContain('page=1')
         expect(api.get.mock.calls[1][0]).not.toContain('page=5')
+    })
+
+    it('renders TripStoryExpanded when the URL has /:trip_id', async () => {
+        api.get.mockImplementation((url) => {
+            if (url.startsWith('/api/trip-history-live/')) {
+                return Promise.resolve({
+                    trip: { trip_id: 'T1', fleet_id: 'TLC-22',
+                            source_lab: 'BF3', destination: 'SMS3',
+                            net_weight: 368.0 },
+                    matched_heats: [],
+                    current_torpedo_position: null,
+                    anomaly_flags: [],
+                    last_sync_at: { wbatngl: null, hts: null },
+                })
+            }
+            return Promise.resolve(samplePayload())
+        })
+        renderAt('/trip-history-live/T1')
+        await waitFor(() => {
+            expect(screen.getByText('TAP')).toBeInTheDocument()
+        })
+        // Also calls both endpoints
+        const callUrls = api.get.mock.calls.map(c => c[0])
+        expect(callUrls.some(u => u.startsWith('/api/trip-history-live?'))).toBe(true)
+        expect(callUrls.some(u => u === '/api/trip-history-live/T1')).toBe(true)
+    })
+
+    it('clicking a row navigates to the deep-link route', async () => {
+        api.get.mockResolvedValue(samplePayload())
+        renderAt('/trip-history-live')
+        await waitFor(() => {
+            expect(screen.getByTestId('trip-row-T1')).toBeInTheDocument()
+        })
+        fireEvent.click(screen.getByTestId('trip-row-T1'))
+        // The detail endpoint should now have been called
+        await waitFor(() => {
+            const callUrls = api.get.mock.calls.map(c => c[0])
+            expect(callUrls.some(u => u === '/api/trip-history-live/T1')).toBe(true)
+        })
     })
 })
