@@ -6,26 +6,38 @@ import pytest
 from backend.routes.operations import _time_window_to_cutoff
 
 
+# Mirror of backend.routes.operations._now_ist_naive — kept private to the
+# test module so we can compute IST-naive expected times without coupling
+# the test asserts to the production helper's import path. WBATNGL / HTS
+# source tables store IST-naive timestamps; the endpoint's time windows
+# now anchor on IST-naive "now", so the tests must as well.
+_TEST_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _ist_now():
+    return datetime.utcnow() + _TEST_IST_OFFSET
+
+
 class TestTimeWindow:
     def test_today(self):
         cutoff = _time_window_to_cutoff("today")
-        now = datetime.utcnow()
+        now = _ist_now()
         assert cutoff.date() == now.date()
         assert cutoff.hour == 0 and cutoff.minute == 0
 
     def test_24h(self):
         cutoff = _time_window_to_cutoff("24h")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(hours=23, minutes=59) <= delta <= timedelta(hours=24, minutes=1)
 
     def test_7d(self):
         cutoff = _time_window_to_cutoff("7d")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(days=6, hours=23) <= delta <= timedelta(days=7, hours=1)
 
     def test_30d(self):
         cutoff = _time_window_to_cutoff("30d")
-        delta = datetime.utcnow() - cutoff
+        delta = _ist_now() - cutoff
         assert timedelta(days=29, hours=23) <= delta <= timedelta(days=30, hours=1)
 
     def test_invalid_raises_400(self):
@@ -229,24 +241,31 @@ class TestDashboardKpiStrip:
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         assert r.json()["kpi_strip"]["active_trips_now"] == 1
 
-    def test_idle_torpedoes_uses_latest_per_fleet(
+    def test_idle_torpedoes_counts_fleet_management_operating(
             self, db_session, client, auth_headers):
-        from backend.database.models import FleetLiveLocation
-        now = datetime.utcnow()
-        # Two snapshots for TLC-22: earlier=Moving, later=Idle → latest=Idle
+        # FleetManagement.status == "Operating" is the SuVeechi-mapped
+        # representation of "Idle" (= parked, available for dispatch).
+        # FleetLiveLocation.type is a hardcoded entity-type and cannot drive
+        # this KPI — see backend/utils/suveechi_sync.py SUVEECHI_STATUS_MAP.
+        from backend.database.models import FleetManagement
         db_session.add_all([
-            FleetLiveLocation(fleet_id="TLC-22", type="Idle",
-                              x=1.0, y=1.0, last_updated=now),
-            FleetLiveLocation(fleet_id="TLC-22", type="Moving",
-                              x=1.0, y=1.0,
-                              last_updated=now - timedelta(minutes=5)),
-            FleetLiveLocation(fleet_id="TLC-23", type="Moving",
-                              x=1.0, y=1.0, last_updated=now),
+            FleetManagement(fleet_id="TLC-01", type="torpedo",
+                            status="Operating", capacity=350.0),
+            FleetManagement(fleet_id="TLC-02", type="torpedo",
+                            status="Operating", capacity=350.0),
+            FleetManagement(fleet_id="TLC-03", type="torpedo",
+                            status="Moving", capacity=350.0),
+            FleetManagement(fleet_id="TLC-04", type="torpedo",
+                            status="Maintenance", capacity=350.0),
+            # Soft-deleted Operating — should NOT count
+            FleetManagement(fleet_id="TLC-05", type="torpedo",
+                            status="Operating", capacity=350.0,
+                            deleted_at=datetime.utcnow()),
         ])
         db_session.commit()
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
-        # TLC-22 idle counts, TLC-23 moving does not
-        assert r.json()["kpi_strip"]["idle_torpedoes"] == 1
+        # Only TLC-01 + TLC-02 are "Operating" + not soft-deleted + type=torpedo
+        assert r.json()["kpi_strip"]["idle_torpedoes"] == 2
 
 
 def _converter_by(body, letter):
@@ -263,7 +282,9 @@ class TestDashboardConverters:
 
     def test_heat_in_progress_state(
             self, db_session, client, auth_headers, heat_at):
-        now = datetime.utcnow()
+        # Endpoint computes elapsed as _now_ist_naive() - torpedo_in_time —
+        # seed in the IST-naive frame so the elapsed_minutes assertion holds.
+        now = _ist_now()
         heat_at("D1", "TLC-22",
                 torpedo_in_time=now - timedelta(minutes=12),
                 torpedo_out_time=None,
@@ -310,7 +331,8 @@ class TestDashboardConverters:
 class TestDashboardActiveTrips:
     def test_active_trips_includes_unmatched_with_out_date(
             self, db_session, client, auth_headers, trip_at):
-        t = datetime.utcnow() - timedelta(minutes=30)
+        # IST-naive seeds — elapsed is computed against _now_ist_naive().
+        t = _ist_now() - timedelta(minutes=30)
         trip_at("T1", "TLC-22", closetime=t, out_date=t - timedelta(minutes=10),
                 source_lab="BF3", destination="SMS3", net_weight=368.0)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -327,7 +349,8 @@ class TestDashboardActiveTrips:
 
     def test_active_trips_excludes_matched(
             self, db_session, client, auth_headers, trip_at, heat_at):
-        t = datetime.utcnow() - timedelta(minutes=10)
+        # Seed in IST-naive frame so out_date lands within the 6h window.
+        t = _ist_now() - timedelta(minutes=10)
         trip_at("T1", "TLC-22", closetime=t)
         heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5))
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -335,7 +358,9 @@ class TestDashboardActiveTrips:
 
     def test_active_trips_sorted_out_date_desc(
             self, db_session, client, auth_headers, trip_at):
-        now = datetime.utcnow()
+        # Both trips must seed within the 6h IST window. Use IST-naive now;
+        # "OLD" at 3h ago + "NEW" at 10min ago both land inside the window.
+        now = _ist_now()
         trip_at("OLD", "TLC-22", closetime=now - timedelta(hours=3),
                 out_date=now - timedelta(hours=3, minutes=10))
         trip_at("NEW", "TLC-23", closetime=now - timedelta(minutes=10),
@@ -344,25 +369,66 @@ class TestDashboardActiveTrips:
         ids = [t["trip_id"] for t in r.json()["active_trips"]]
         assert ids == ["NEW", "OLD"]
 
-    def test_active_trips_current_status_from_fleet_live(
+    def test_active_trips_current_status_from_fleet_management(
             self, db_session, client, auth_headers, trip_at):
-        from backend.database.models import FleetLiveLocation
-        t = datetime.utcnow() - timedelta(minutes=10)
+        # current_status reflects FleetManagement.status, NOT
+        # FleetLiveLocation.type (which is the hardcoded "torpedo" entity-type).
+        from backend.database.models import FleetManagement
+        t = _ist_now() - timedelta(minutes=10)
         trip_at("T1", "TLC-22", closetime=t,
                 out_date=t - timedelta(minutes=10))
-        db_session.add(FleetLiveLocation(
-            fleet_id="TLC-22", type="Moving",
-            x=1.0, y=1.0, last_updated=datetime.utcnow(),
+        db_session.add(FleetManagement(
+            fleet_id="TLC-22", type="torpedo",
+            status="Moving", capacity=350.0,
         ))
         db_session.commit()
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
-        assert r.json()["active_trips"][0]["current_status"] == "Moving"
+        rows = r.json()["active_trips"]
+        assert any(row["current_status"] == "Moving" and row["torpedo_no"] == "TLC-22"
+                   for row in rows)
+
+    def test_active_trips_current_status_none_when_no_fleet_management(
+            self, db_session, client, auth_headers, trip_at):
+        # No FleetManagement row for the torpedo → current_status is null.
+        t = _ist_now() - timedelta(minutes=10)
+        trip_at("T1", "TLC-NEW-99", closetime=t,
+                out_date=t - timedelta(minutes=10))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        matching = [row for row in r.json()["active_trips"]
+                    if row["torpedo_no"] == "TLC-NEW-99"]
+        assert len(matching) == 1
+        assert matching[0]["current_status"] is None
+
+    def test_active_trips_excludes_old_trips(
+            self, db_session, client, auth_headers, trip_at):
+        # Bug 3: active_trips KPI is now bounded by a 6h IST window, not a
+        # 200-row cap. Trips with out_date older than the window are excluded
+        # from both the KPI count and the rows list — preventing the false
+        # 'active_trips_now=200' reading observed on SMS4 when HTS was frozen.
+        now_ist = _ist_now()
+        # 5h ago — within the 6h window
+        trip_at("RECENT", "TLC-22",
+                closetime=now_ist - timedelta(hours=5),
+                out_date=now_ist - timedelta(hours=5, minutes=30))
+        # 7h ago — outside the 6h window
+        trip_at("OLD", "TLC-23",
+                closetime=now_ist - timedelta(hours=7),
+                out_date=now_ist - timedelta(hours=7, minutes=30))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        ids = {row["trip_id"] for row in r.json()["active_trips"]}
+        assert "RECENT" in ids
+        assert "OLD" not in ids
+        # KPI count is also bounded by the window (no longer hits 200 cap).
+        assert r.json()["kpi_strip"]["active_trips_now"] >= 1
+        assert r.json()["kpi_strip"]["active_trips_now"] < 50
 
 
 class TestDashboardActivityFeed:
     def test_trip_close_event_appears(
             self, db_session, client, auth_headers, trip_at):
-        t = datetime.utcnow() - timedelta(minutes=20)
+        # Feed horizon is _now_ist_naive() - 2h; seed in IST-naive frame
+        # so the event lands within the horizon.
+        t = _ist_now() - timedelta(minutes=20)
         trip_at("T1", "TLC-22", closetime=t,
                 source_lab="BF3", destination="SMS3", net_weight=368.0)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -373,16 +439,32 @@ class TestDashboardActivityFeed:
 
     def test_heat_start_event_appears(
             self, db_session, client, auth_headers, heat_at):
-        t = datetime.utcnow() - timedelta(minutes=15)
+        t = _ist_now() - timedelta(minutes=15)
         heat_at("D1", "TLC-22", torpedo_in_time=t)
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         events = r.json()["activity_feed"]
         starts = [e for e in events if e["type"] == "heat_started"]
         assert any(e["ref_id"] == "D1" for e in starts)
 
+    def test_activity_feed_uses_ascii_arrow(
+            self, db_session, client, auth_headers, trip_at):
+        # Bug 4: trip_completed summary used U+2192 ('→'), which renders
+        # as mojibake under Windows cmd code pages (CP 437/850). Use ASCII
+        # '->' so the SMS4 PC operator console reads correctly.
+        t = _ist_now() - timedelta(minutes=20)
+        trip_at("T1", "TLC-22", closetime=t,
+                source_lab="BF3", destination="SMS3", net_weight=368.0)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        events = r.json()["activity_feed"]
+        completes = [e for e in events if e["type"] == "trip_completed"]
+        assert any(e["ref_id"] == "T1" for e in completes)
+        target = next(e for e in completes if e["ref_id"] == "T1")
+        assert "->" in target["summary"]
+        assert "→" not in target["summary"]   # the unicode arrow
+
     def test_feed_capped_at_20_reverse_chronological(
             self, db_session, client, auth_headers, trip_at, heat_at):
-        base = datetime.utcnow() - timedelta(minutes=50)
+        base = _ist_now() - timedelta(minutes=50)
         for i in range(15):
             trip_at(f"T{i}", f"TLC-{i:02d}",
                     closetime=base + timedelta(minutes=i))
@@ -682,3 +764,47 @@ class TestTripDetailContent:
         trip_at("T1", "TLC-NO-LOC", closetime=t)
         r = client.get("/api/trip-history-live/T1", headers=auth_headers)
         assert r.json()["current_torpedo_position"] is None
+
+    def test_current_position_includes_current_status_from_fm(
+            self, db_session, client, auth_headers, trip_at):
+        """Detail endpoint mirrors active_trips[].current_status semantics:
+        position.current_status comes from FleetManagement.status, not from
+        the entity-type column on FleetLiveLocation."""
+        from backend.database.models import FleetLiveLocation, FleetManagement
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-22", closetime=t)
+        db_session.add_all([
+            FleetLiveLocation(
+                fleet_id="TLC-22", type="torpedo", x=12.3, y=45.6,
+                last_updated=datetime.utcnow(),
+            ),
+            FleetManagement(
+                fleet_id="TLC-22", type="torpedo",
+                status="Moving", capacity=350.0,
+            ),
+        ])
+        db_session.commit()
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        pos = r.json()["current_torpedo_position"]
+        assert pos["fleet_id"] == "TLC-22"
+        assert pos["x"] == 12.3 and pos["y"] == 45.6
+        # The new contract: current_status is the FleetManagement value.
+        assert pos["current_status"] == "Moving"
+
+    def test_current_position_current_status_none_when_no_fm_row(
+            self, db_session, client, auth_headers, trip_at):
+        """When the torpedo has a GPS row but no FleetManagement row
+        (e.g. a brand-new fleet_id observed by SuVeechi before the fleet
+        seed runs), current_status falls back to None gracefully."""
+        from backend.database.models import FleetLiveLocation
+        t = datetime.utcnow() - timedelta(minutes=10)
+        trip_at("T1", "TLC-NEW-99", closetime=t)
+        db_session.add(FleetLiveLocation(
+            fleet_id="TLC-NEW-99", type="torpedo", x=1.0, y=2.0,
+            last_updated=datetime.utcnow(),
+        ))
+        db_session.commit()
+        r = client.get("/api/trip-history-live/T1", headers=auth_headers)
+        pos = r.json()["current_torpedo_position"]
+        assert pos["fleet_id"] == "TLC-NEW-99"
+        assert pos["current_status"] is None

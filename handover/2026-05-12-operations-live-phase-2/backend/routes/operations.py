@@ -16,12 +16,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, func, or_, and_
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 
 from ..database.engine import get_db
 from ..database.models import (
     FleetLiveLocation,
+    FleetManagement,
     HtsHeatMirror,
     User,
     WbatnglTripMirror,
@@ -33,6 +34,21 @@ from ..utils.security import get_current_user_required
 
 router = APIRouter(tags=["operations-live"])
 
+# WBATNGL and HTS Oracle source tables store timestamps as IST-naive
+# wall-clock datetimes (no tzinfo, IST values). To compare with these in
+# elapsed-time / time-window calculations, we need "now" in the same
+# IST-naive frame. We do NOT convert IST timestamps to UTC at sync time
+# (that would break parity with the source-system clocks operators see in
+# WBATNGL); instead we shift our internal "now" anchor.
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _now_ist_naive() -> datetime:
+    """UTC now + 5:30 → IST wall-clock naive datetime, matching the
+    convention used by WBATNGL.OUT_DATE / HTS.TORPEDO_IN_TIME etc."""
+    return datetime.utcnow() + _IST_OFFSET
+
+
 # Trip ↔ heat matching window (must match the v_trip_heat_story view).
 MATCH_WINDOW_BEFORE = timedelta(minutes=15)
 MATCH_WINDOW_AFTER = timedelta(minutes=90)
@@ -42,6 +58,12 @@ CONVERTERS = ("D", "E", "F", "G", "H", "I")
 
 # Weight-delta anomaly threshold: |WBATNGL net - SUM(HTS hotmetal)| / WBATNGL net > 10%.
 WEIGHT_DELTA_ANOMALY_PCT = 10.0
+
+# Active-trips KPI window: a trip counts as "active" when it departed within
+# the last N hours AND no matched heat has been recorded. The time-window
+# replaces the old `.limit(200)` candidate cap; bounded by IST-naive
+# elapsed time, not row count.
+ACTIVE_TRIP_WINDOW_HOURS = 6
 
 # Sort whitelist for /api/trip-history-live — never let user input become ORDER BY.
 TRIP_HISTORY_SORT_WHITELIST = {
@@ -57,8 +79,12 @@ TRIP_DETAIL_CACHE_TTL_SEC = 10
 
 
 def _time_window_to_cutoff(time_window: str) -> datetime:
-    """today / 24h / 7d / 30d → UTC cutoff datetime. Raises 400 otherwise."""
-    now = datetime.utcnow()
+    """today / 24h / 7d / 30d → IST-naive cutoff datetime. Raises 400 otherwise.
+
+    Compared against IST-naive WbatnglTripMirror.updated_date (etc.), so we
+    anchor on IST-naive "now" — see _now_ist_naive() above.
+    """
+    now = _now_ist_naive()
     if time_window == "today":
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
     if time_window == "24h":
@@ -156,7 +182,7 @@ async def operations_live_dashboard(
     if cached is not None:
         return cached
 
-    today_cutoff = datetime.utcnow().replace(
+    today_cutoff = _now_ist_naive().replace(
         hour=0, minute=0, second=0, microsecond=0
     )
 
@@ -173,39 +199,37 @@ async def operations_live_dashboard(
         HtsHeatMirror.torpedo_out_time.is_(None),
     ).count()
 
-    # Active trips = out_date NOT NULL AND no matched heat in window.
-    # Compute in Python — small N (typically <20 active trips at a time).
+    # Active trips = out_date in last ACTIVE_TRIP_WINDOW_HOURS AND no matched
+    # heat. The time-window bounds the candidate set (replaces the old
+    # row-cap of 200, which fired spuriously when HTS was frozen and no
+    # trips could match). Captures realistic torpedo cycle times (departure
+    # → load → travel → pour is typically 1-3 hours).
+    recent_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
     candidate_trips = (
         db.query(WbatnglTripMirror)
-        .filter(WbatnglTripMirror.out_date.isnot(None))
+        .filter(
+            WbatnglTripMirror.out_date.isnot(None),
+            WbatnglTripMirror.out_date >= recent_floor,
+        )
         .order_by(WbatnglTripMirror.out_date.desc())
-        .limit(200)
         .all()
     )
     active_trip_rows = [t for t in candidate_trips
                         if not find_matched_heats(db, t)]
     active_trips_now = len(active_trip_rows)
 
-    # Idle torpedoes — latest FleetLiveLocation per fleet_id where type='Idle'.
-    # Cross-dialect "row_number()-style" via correlated subquery.
-    latest_per_fleet = (
-        db.query(
-            FleetLiveLocation.fleet_id,
-            func.max(FleetLiveLocation.last_updated).label("mx"),
-        )
-        .group_by(FleetLiveLocation.fleet_id)
-        .subquery()
-    )
+    # Idle torpedoes = FleetManagement.status == "Operating" (SuVeechi-mapped
+    # "Idle"); see SUVEECHI_STATUS_MAP in backend/utils/suveechi_sync.py.
+    # FleetLiveLocation.type is hardcoded to "torpedo" (entity-type, not state),
+    # so it cannot drive this KPI. soft-deleted rows are excluded to match the
+    # active_only() pattern used elsewhere (see routes/fleet.py).
     idle_torpedoes = (
-        db.query(FleetLiveLocation)
-        .join(
-            latest_per_fleet,
-            and_(
-                FleetLiveLocation.fleet_id == latest_per_fleet.c.fleet_id,
-                FleetLiveLocation.last_updated == latest_per_fleet.c.mx,
-            ),
+        db.query(FleetManagement)
+        .filter(
+            FleetManagement.status == "Operating",
+            FleetManagement.deleted_at.is_(None),
+            FleetManagement.type == "torpedo",
         )
-        .filter(FleetLiveLocation.type == "Idle")
         .count()
     )
 
@@ -245,7 +269,7 @@ async def operations_live_dashboard(
 
         if in_progress:
             elapsed_min = int(
-                (datetime.utcnow() - in_progress.torpedo_in_time).total_seconds() // 60
+                (_now_ist_naive() - in_progress.torpedo_in_time).total_seconds() // 60
             )
             card = {
                 "converter_no": letter,
@@ -282,34 +306,24 @@ async def operations_live_dashboard(
         converter_cards.append(card)
 
     # active_trip_rows was computed during KPI strip — reuse, don't re-query.
-    # Build a per-torpedo lookup of latest FleetLiveLocation.type.
+    # Per-torpedo operational status comes from FleetManagement.status
+    # (SuVeechi-mapped: "Operating"/"Moving"/"Maintenance"/"Assigned").
+    # FleetLiveLocation.type is hardcoded entity-type ("torpedo"); do not use.
     torpedo_ids = [t.fleet_id for t in active_trip_rows if t.fleet_id]
-    latest_status_by_fleet = {}
+    latest_status_by_fleet: dict[str, str] = {}
     if torpedo_ids:
-        latest_per_fleet_sq = (
-            db.query(
-                FleetLiveLocation.fleet_id,
-                func.max(FleetLiveLocation.last_updated).label("mx"),
-            )
-            .filter(FleetLiveLocation.fleet_id.in_(torpedo_ids))
-            .group_by(FleetLiveLocation.fleet_id)
-            .subquery()
-        )
         rows = (
-            db.query(FleetLiveLocation)
-            .join(
-                latest_per_fleet_sq,
-                and_(
-                    FleetLiveLocation.fleet_id == latest_per_fleet_sq.c.fleet_id,
-                    FleetLiveLocation.last_updated == latest_per_fleet_sq.c.mx,
-                ),
+            db.query(FleetManagement.fleet_id, FleetManagement.status)
+            .filter(
+                FleetManagement.fleet_id.in_(torpedo_ids),
+                FleetManagement.deleted_at.is_(None),
             )
             .all()
         )
-        latest_status_by_fleet = {r.fleet_id: r.type for r in rows}
+        latest_status_by_fleet = {r.fleet_id: r.status for r in rows}
 
     active_trips_payload = []
-    now = datetime.utcnow()
+    now = _now_ist_naive()
     for t in active_trip_rows[:50]:                     # cap at 50 for UI
         elapsed_min = (
             int((now - t.out_date).total_seconds() // 60)
@@ -329,7 +343,7 @@ async def operations_live_dashboard(
         })
 
     # Activity feed — last 20 events from the union of trip_close + heat_start.
-    feed_horizon = datetime.utcnow() - timedelta(hours=2)
+    feed_horizon = _now_ist_naive() - timedelta(hours=2)
 
     recent_closes = (
         db.query(WbatnglTripMirror)
@@ -352,7 +366,7 @@ async def operations_live_dashboard(
             "type": "trip_completed",
             "at": t.closetime,
             "summary": (
-                f"{t.fleet_id or '?'} closed {t.source_lab or '?'} → "
+                f"{t.fleet_id or '?'} closed {t.source_lab or '?'} -> "
                 f"{t.destination or '?'}"
                 + (f" ({float(t.net_weight):.0f} MT)" if t.net_weight else "")
             ),
@@ -566,7 +580,9 @@ async def trip_history_live_detail(
         matched_total_mt=matched_total,
     )
 
-    # Latest fleet_live_locations row for the torpedo.
+    # Latest fleet_live_locations row for the torpedo (carries x/y/last_updated
+    # GPS data). Operational status comes from FleetManagement.status — added
+    # as a top-level key on the position dict alongside the GPS fields.
     current_pos = None
     if trip.fleet_id:
         latest = (
@@ -577,6 +593,18 @@ async def trip_history_live_detail(
         )
         if latest:
             current_pos = _row_to_dict(latest, FleetLiveLocation)
+            fm = (
+                db.query(FleetManagement.status)
+                .filter(
+                    FleetManagement.fleet_id == trip.fleet_id,
+                    FleetManagement.deleted_at.is_(None),
+                )
+                .first()
+            )
+            # Use `current_status` (same key name as on active_trips[] rows)
+            # so the frontend sees one consistent field for "what is this
+            # torpedo doing right now" across both endpoints.
+            current_pos["current_status"] = fm.status if fm else None
 
     payload = {
         "trip": _row_to_dict(trip, WbatnglTripMirror),

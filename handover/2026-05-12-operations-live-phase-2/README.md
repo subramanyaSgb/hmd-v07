@@ -177,3 +177,38 @@ If a tunable needs to change, edit the constant and redeploy. No DB change requi
 ## Next phase
 
 Phase 3 = Page 1 frontend (Operations Live cockpit). Plan not yet written — will be drafted after user confirms Phase 2 endpoints work on SMS4 (Task 2.19, user-driven).
+
+---
+
+## Update 2026-05-12 — Hotfix applied
+
+After Phase 2 deploy on SMS4, five issues were spotted during verification and fixed in this branch. The snapshots of `backend/routes/operations.py`, `backend/main.py`, and `backend/tests/test_operations_endpoints.py` in this handover folder reflect the fixed HEAD. See `changes_tracker.md` entries #67-#71 for the full audit trail.
+
+### Behavioural changes ops will see
+
+- **`idle_torpedoes`** now counts from `FleetManagement.status="Operating"` (was always 0; the old query looked at `FleetLiveLocation.type`, which is hardcoded to the string `"torpedo"` and is an entity-type marker, not an operational state).
+- **`active_trips[].current_status`** now reflects `FleetManagement.status` (was always `"torpedo"` for the same reason).
+- **`active_trips_now` KPI** is bounded to the last 6 h IST via a new module-level constant `ACTIVE_TRIP_WINDOW_HOURS = 6` (was capped at 200 candidate rows, which would always report 200 whenever HTS was frozen because every WBATNGL trip is unmatched in that state).
+- **`elapsed_minutes`** is computed in IST via a new `_now_ist_naive()` helper (`_IST_OFFSET = timedelta(hours=5, minutes=30)`). Previously the endpoint anchored "now" on `datetime.utcnow()` while WBATNGL/HTS source timestamps are IST-naive wall-clock, producing -290 min for IST-recent trips. The same helper now also drives `today_cutoff`, `feed_horizon`, the converter card's elapsed display, and `_time_window_to_cutoff`.
+- **`activity_feed`** `trip_completed` summaries use ASCII `->` (was Unicode `→` U+2192, which renders as `ΓåÆ` mojibake under Windows cmd code pages CP437/CP850 — the activity feed is plain text in the SMS4 operator console).
+- **`current_torpedo_position.current_status`** key on the detail endpoint — renamed from `.status` so it matches `active_trips[].current_status` (one consistent field for "what is this torpedo doing right now" across both endpoints). Added two regression tests for the new FM-lookup branch.
+
+### Hotfix commits (5)
+
+```
+5d106a8  fix(ops-live): _now_ist_naive() helper + use IST for elapsed/today/feed_horizon
+526406d  fix(ops-live): pull current_status + idle_torpedoes from FleetManagement
+ba94dff  fix(ops-live): bound active_trips candidates to last 6h (ACTIVE_TRIP_WINDOW_HOURS)
+5190e30  fix(ops-live): activity feed uses ASCII '->' (Windows cmd safe)
+a909e38  fix(ops-live): rename position.status -> current_status + cover new FM status field with tests
+```
+
+### Deploy
+
+Same as the Phase 2 deploy steps above: `git pull && restart backend`. No migrations, no env changes. The behaviour change is transparent to the API contract — the renamed key on the detail endpoint is effectively a NEW key because Phase 2 only just shipped, so there are no prior consumers to break.
+
+### Test counts (post-hotfix)
+
+- `backend/tests/test_operations_endpoints.py`: **65 tests** (was 60 at Phase 2 finish — net +5: -2 deleted in #68, +3 in #68, +1 in #69, +1 in #70, +2 in #71)
+- Full backend suite: **333 passed** (was 328 at Phase 2 finish)
+- App route count: **162** (unchanged)
