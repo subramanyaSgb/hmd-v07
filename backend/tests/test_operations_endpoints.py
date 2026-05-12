@@ -327,6 +327,24 @@ class TestDashboardConverters:
         d = _converter_by(r.json(), "D")
         assert d["last_heat_no"] == "D_NEW"
 
+    def test_converter_card_sms_null_when_no_heat_row_has_sms(
+            self, db_session, client, auth_headers, heat_at):
+        """Converter card sms field falls back to None gracefully when
+        no heat row has a non-null sms (Hari's column hasn't shipped yet
+        on the JSW source side)."""
+        now = _ist_now() - timedelta(minutes=15)
+        heat_at("D1", "TLC-22",
+                torpedo_in_time=now,
+                torpedo_out_time=None,
+                converter_no="D",
+                sms=None,          # explicit None — the deferred-column case
+                hotmetal_qty=120.0)
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        d = _converter_by(r.json(), "D")
+        assert d["state"] == "HEAT_IN_PROGRESS"
+        # graceful fallback, not "torpedo" or any other leaked value
+        assert d["sms"] is None
+
 
 class TestDashboardActiveTrips:
     def test_active_trips_includes_unmatched_with_out_date(

@@ -396,12 +396,25 @@ async def operations_live_dashboard(
     return payload
 
 
+# Internal sync-engine plumbing columns the frontend never needs. Stripped
+# from every _row_to_dict() payload below to keep wire shapes lean. Note:
+# the matching helper in backend/routes/jsw.py intentionally stays as-is —
+# its existing UI consumers may bind to the unfiltered shape.
+_PRIVATE_COLUMNS = frozenset({"synced_at", "id", "source_table"})
+
+
 def _row_to_dict(row, model) -> dict:
-    """Serialize a SQLAlchemy row to a dict using the model's column names.
+    """Serialize a SQLAlchemy row to a JSON-ready dict, skipping internal
+    plumbing columns (`synced_at`, `id`, `source_table`) that are sync-engine
+    implementation details rather than business data.
 
     Model-agnostic; reused by trip-history-live list + detail endpoints.
     """
-    return {c.name: getattr(row, c.name) for c in model.__table__.columns}
+    return {
+        c.name: getattr(row, c.name)
+        for c in model.__table__.columns
+        if c.name not in _PRIVATE_COLUMNS
+    }
 
 
 @router.get("/api/trip-history-live")
