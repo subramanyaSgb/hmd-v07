@@ -241,24 +241,31 @@ class TestDashboardKpiStrip:
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
         assert r.json()["kpi_strip"]["active_trips_now"] == 1
 
-    def test_idle_torpedoes_uses_latest_per_fleet(
+    def test_idle_torpedoes_counts_fleet_management_operating(
             self, db_session, client, auth_headers):
-        from backend.database.models import FleetLiveLocation
-        now = datetime.utcnow()
-        # Two snapshots for TLC-22: earlier=Moving, later=Idle → latest=Idle
+        # FleetManagement.status == "Operating" is the SuVeechi-mapped
+        # representation of "Idle" (= parked, available for dispatch).
+        # FleetLiveLocation.type is a hardcoded entity-type and cannot drive
+        # this KPI — see backend/utils/suveechi_sync.py SUVEECHI_STATUS_MAP.
+        from backend.database.models import FleetManagement
         db_session.add_all([
-            FleetLiveLocation(fleet_id="TLC-22", type="Idle",
-                              x=1.0, y=1.0, last_updated=now),
-            FleetLiveLocation(fleet_id="TLC-22", type="Moving",
-                              x=1.0, y=1.0,
-                              last_updated=now - timedelta(minutes=5)),
-            FleetLiveLocation(fleet_id="TLC-23", type="Moving",
-                              x=1.0, y=1.0, last_updated=now),
+            FleetManagement(fleet_id="TLC-01", type="torpedo",
+                            status="Operating", capacity=350.0),
+            FleetManagement(fleet_id="TLC-02", type="torpedo",
+                            status="Operating", capacity=350.0),
+            FleetManagement(fleet_id="TLC-03", type="torpedo",
+                            status="Moving", capacity=350.0),
+            FleetManagement(fleet_id="TLC-04", type="torpedo",
+                            status="Maintenance", capacity=350.0),
+            # Soft-deleted Operating — should NOT count
+            FleetManagement(fleet_id="TLC-05", type="torpedo",
+                            status="Operating", capacity=350.0,
+                            deleted_at=datetime.utcnow()),
         ])
         db_session.commit()
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
-        # TLC-22 idle counts, TLC-23 moving does not
-        assert r.json()["kpi_strip"]["idle_torpedoes"] == 1
+        # Only TLC-01 + TLC-02 are "Operating" + not soft-deleted + type=torpedo
+        assert r.json()["kpi_strip"]["idle_torpedoes"] == 2
 
 
 def _converter_by(body, letter):
@@ -359,19 +366,35 @@ class TestDashboardActiveTrips:
         ids = [t["trip_id"] for t in r.json()["active_trips"]]
         assert ids == ["NEW", "OLD"]
 
-    def test_active_trips_current_status_from_fleet_live(
+    def test_active_trips_current_status_from_fleet_management(
             self, db_session, client, auth_headers, trip_at):
-        from backend.database.models import FleetLiveLocation
-        t = datetime.utcnow() - timedelta(minutes=10)
+        # current_status reflects FleetManagement.status, NOT
+        # FleetLiveLocation.type (which is the hardcoded "torpedo" entity-type).
+        from backend.database.models import FleetManagement
+        t = _ist_now() - timedelta(minutes=10)
         trip_at("T1", "TLC-22", closetime=t,
                 out_date=t - timedelta(minutes=10))
-        db_session.add(FleetLiveLocation(
-            fleet_id="TLC-22", type="Moving",
-            x=1.0, y=1.0, last_updated=datetime.utcnow(),
+        db_session.add(FleetManagement(
+            fleet_id="TLC-22", type="torpedo",
+            status="Moving", capacity=350.0,
         ))
         db_session.commit()
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
-        assert r.json()["active_trips"][0]["current_status"] == "Moving"
+        rows = r.json()["active_trips"]
+        assert any(row["current_status"] == "Moving" and row["torpedo_no"] == "TLC-22"
+                   for row in rows)
+
+    def test_active_trips_current_status_none_when_no_fleet_management(
+            self, db_session, client, auth_headers, trip_at):
+        # No FleetManagement row for the torpedo → current_status is null.
+        t = _ist_now() - timedelta(minutes=10)
+        trip_at("T1", "TLC-NEW-99", closetime=t,
+                out_date=t - timedelta(minutes=10))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        matching = [row for row in r.json()["active_trips"]
+                    if row["torpedo_no"] == "TLC-NEW-99"]
+        assert len(matching) == 1
+        assert matching[0]["current_status"] is None
 
 
 class TestDashboardActivityFeed:

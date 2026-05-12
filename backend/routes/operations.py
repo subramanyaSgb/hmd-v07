@@ -16,12 +16,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, func, or_, and_
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 
 from ..database.engine import get_db
 from ..database.models import (
     FleetLiveLocation,
+    FleetManagement,
     HtsHeatMirror,
     User,
     WbatnglTripMirror,
@@ -205,26 +206,18 @@ async def operations_live_dashboard(
                         if not find_matched_heats(db, t)]
     active_trips_now = len(active_trip_rows)
 
-    # Idle torpedoes — latest FleetLiveLocation per fleet_id where type='Idle'.
-    # Cross-dialect "row_number()-style" via correlated subquery.
-    latest_per_fleet = (
-        db.query(
-            FleetLiveLocation.fleet_id,
-            func.max(FleetLiveLocation.last_updated).label("mx"),
-        )
-        .group_by(FleetLiveLocation.fleet_id)
-        .subquery()
-    )
+    # Idle torpedoes = FleetManagement.status == "Operating" (SuVeechi-mapped
+    # "Idle"); see SUVEECHI_STATUS_MAP in backend/utils/suveechi_sync.py.
+    # FleetLiveLocation.type is hardcoded to "torpedo" (entity-type, not state),
+    # so it cannot drive this KPI. soft-deleted rows are excluded to match the
+    # active_only() pattern used elsewhere (see routes/fleet.py).
     idle_torpedoes = (
-        db.query(FleetLiveLocation)
-        .join(
-            latest_per_fleet,
-            and_(
-                FleetLiveLocation.fleet_id == latest_per_fleet.c.fleet_id,
-                FleetLiveLocation.last_updated == latest_per_fleet.c.mx,
-            ),
+        db.query(FleetManagement)
+        .filter(
+            FleetManagement.status == "Operating",
+            FleetManagement.deleted_at.is_(None),
+            FleetManagement.type == "torpedo",
         )
-        .filter(FleetLiveLocation.type == "Idle")
         .count()
     )
 
@@ -301,31 +294,21 @@ async def operations_live_dashboard(
         converter_cards.append(card)
 
     # active_trip_rows was computed during KPI strip — reuse, don't re-query.
-    # Build a per-torpedo lookup of latest FleetLiveLocation.type.
+    # Per-torpedo operational status comes from FleetManagement.status
+    # (SuVeechi-mapped: "Operating"/"Moving"/"Maintenance"/"Assigned").
+    # FleetLiveLocation.type is hardcoded entity-type ("torpedo"); do not use.
     torpedo_ids = [t.fleet_id for t in active_trip_rows if t.fleet_id]
-    latest_status_by_fleet = {}
+    latest_status_by_fleet: dict[str, str] = {}
     if torpedo_ids:
-        latest_per_fleet_sq = (
-            db.query(
-                FleetLiveLocation.fleet_id,
-                func.max(FleetLiveLocation.last_updated).label("mx"),
-            )
-            .filter(FleetLiveLocation.fleet_id.in_(torpedo_ids))
-            .group_by(FleetLiveLocation.fleet_id)
-            .subquery()
-        )
         rows = (
-            db.query(FleetLiveLocation)
-            .join(
-                latest_per_fleet_sq,
-                and_(
-                    FleetLiveLocation.fleet_id == latest_per_fleet_sq.c.fleet_id,
-                    FleetLiveLocation.last_updated == latest_per_fleet_sq.c.mx,
-                ),
+            db.query(FleetManagement.fleet_id, FleetManagement.status)
+            .filter(
+                FleetManagement.fleet_id.in_(torpedo_ids),
+                FleetManagement.deleted_at.is_(None),
             )
             .all()
         )
-        latest_status_by_fleet = {r.fleet_id: r.type for r in rows}
+        latest_status_by_fleet = {r.fleet_id: r.status for r in rows}
 
     active_trips_payload = []
     now = _now_ist_naive()
@@ -585,7 +568,9 @@ async def trip_history_live_detail(
         matched_total_mt=matched_total,
     )
 
-    # Latest fleet_live_locations row for the torpedo.
+    # Latest fleet_live_locations row for the torpedo (carries x/y/last_updated
+    # GPS data). Operational status comes from FleetManagement.status — added
+    # as a top-level key on the position dict alongside the GPS fields.
     current_pos = None
     if trip.fleet_id:
         latest = (
@@ -596,6 +581,15 @@ async def trip_history_live_detail(
         )
         if latest:
             current_pos = _row_to_dict(latest, FleetLiveLocation)
+            fm = (
+                db.query(FleetManagement.status)
+                .filter(
+                    FleetManagement.fleet_id == trip.fleet_id,
+                    FleetManagement.deleted_at.is_(None),
+                )
+                .first()
+            )
+            current_pos["status"] = fm.status if fm else None
 
     payload = {
         "trip": _row_to_dict(trip, WbatnglTripMirror),
