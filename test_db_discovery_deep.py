@@ -1,27 +1,30 @@
 """
-DB Discovery Reporter — DEEP PASS across all reachable HTS-side schemas.
+DB Discovery Reporter — DEEP PASS across ALL 3 JSW database connections.
 
-Sequel to `test_db_discovery.py`. The first pass found that the
-`ICT_IFACE` Oracle account can read 27 schemas, but we only audited
-`HTS`. This script goes wide across every schema where domain data
-plausibly lives (SMS3 / SPTS_MES / BRM2MES / SAPIFACE / SMIS / ...).
+Sequel to `test_db_discovery.py` (which was scoped to known
+schemas). This version goes WIDE everywhere:
 
-For each schema:
-  1. List every table + view (name, est. row count, col count)
-  2. Hunt for column-name patterns that fill V2 feature gaps:
-       torpedo · ladle · heat · slag · chemistry · phosphorus ·
-       operator notes · disposition · campaign · refractory ·
-       calibration · battery · shell · heel · weighbridge · arrival
-  3. For tables whose NAME matches the same patterns, dump columns +
-     2 sample rows
-  4. Snapshot total objects per schema so we can prioritize
+  1. SuVeechi MySQL  — `view_user` account
+       Auto-detects every database the account can SHOW, walks each
+       one's tables + views.
+  2. WBATNGL Oracle  — `ITROSYSP` account
+       Lists every schema visible (we previously only audited BF3 +
+       BF5; the account may see BF1/BF2/BF4/quality/lab schemas).
+  3. HTS Oracle      — `ICT_IFACE` account
+       Walks every schema visible (27 in our first audit) skipping
+       only Oracle internals + personal sandboxes.
 
-Skips Oracle internals (SYS / SYSTEM / CTXSYS / MDSYS / OLAPSYS / XDB /
-DBLINKUSER / APPS), personal sandboxes (J_ANKIT / S_ARUN / TBP), and
-out-of-scope billing (INVOICE / CRM / CR_MGT / JSWCRM).
+For each schema, the script:
+  1. Lists every TABLE + VIEW with col count + row count
+  2. Hunts for column-name patterns matching 11 themes
+     (torpedo / heat / slag / weighbridge / operator notes /
+      shell-heel-battery / campaign-refractory / delay / shift-time /
+      asset-register / hot-metal)
+  3. For tables whose NAME matches HMD-relevant patterns, dumps
+     columns + 2 sample rows (capped at 20 tables/schema)
+  4. Survives per-schema / per-table crashes (cursor reconnects)
 
-Read-only. Survives ORA-* errors per-schema and per-table so one bad
-table doesn't kill the report.
+Read-only. No mutations. Bounded output.
 
 Usage on BF4:
     cd C:\\Users\\v_subramanya.gopal\\Desktop\\HMD
@@ -95,7 +98,7 @@ def _run(cur, sql, params=None):
         return [], str(e).splitlines()[0]
 
 
-# ─── Patterns to match — what fills V2 feature gaps ────────────────
+# ─── Patterns shared across both Oracle + MySQL inspection ─────────
 COLUMN_PATTERNS = {
     "torpedo / ladle":         ['%TORPEDO%', '%LADLE%', '%TLC%'],
     "heat / charge":           ['%HEAT%', '%CHARGE%', '%TAP%'],
@@ -122,25 +125,29 @@ TABLE_PATTERNS = [
     '%PRODUCT%', '%CAST%', '%MIXER%',
 ]
 
-# Schemas to audit — anything reachable that might contain HMD-relevant data.
-# Excludes Oracle internals, personal sandboxes, and out-of-scope billing.
-TARGET_SCHEMAS = [
-    'SMS3',         # SMS3-specific tables (ZPF/EAF per memory)
-    'SPTS_MES',     # Steel Plant Tracking System — MES layer
-    'SPT001A',      # Probably SPT system pieces
-    'BRM2MES',      # Another MES integration
-    'SAPIFACE',     # SAP integration (material movements, asset register?)
-    'SMIS',         # SMS Info System
-    'IFACE_SM',     # Interface — SMS
-    'IFACEMGR',     # Interface manager
-    'HSM2_L2',      # Hot Strip Mill 2 L2 — downstream but worth a peek
-    'UGL',          # Unknown — check
-]
+# Schemas we want to NEVER walk (Oracle internals + sandboxes + already-audited)
+ORACLE_SKIP = {
+    'SYS', 'SYSTEM', 'CTXSYS', 'MDSYS', 'OLAPSYS', 'XDB',
+    'DBLINKUSER', 'APPS',
+    'J_ANKIT', 'S_ARUN', 'TBP',
+    'INVOICE', 'CRM', 'CR_MGT', 'JSWCRM',
+    # Oracle 12c+ internals
+    'AUDSYS', 'DVSYS', 'DVF', 'GSMADMIN_INTERNAL', 'LBACSYS',
+    'OJVMSYS', 'ORDDATA', 'ORDSYS', 'OUTLN', 'WMSYS',
+    'APPQOSSYS', 'GSMCATUSER', 'GSMUSER', 'SYSBACKUP',
+    'SYSDG', 'SYSKM', 'SYSRAC', 'REMOTE_SCHEDULER_AGENT',
+    'DBSFWUSER', 'DBSNMP', 'ORACLE_OCM',
+    'PUBLIC', 'ANONYMOUS',
+}
+
+# MySQL system DBs to skip
+MYSQL_SKIP = {
+    'information_schema', 'performance_schema', 'mysql', 'sys',
+}
 
 
-# ─── Per-schema inspection ─────────────────────────────────────────
-def inspect_schema(cur, schema, out):
-    """One schema = one self-contained block in the output."""
+# ─── Per-Oracle-schema inspection ──────────────────────────────────
+def inspect_oracle_schema(cur, schema, out):
     _subsection(out, schema)
 
     # 1. Object inventory
@@ -159,10 +166,10 @@ def inspect_schema(cur, schema, out):
         out.write(f"  (zero objects readable in {schema})\n")
         return
 
-    # Quick stats per object — col count + row count estimate
-    obj_summary = []
-    for oname, otype in rows:
-        # Column count via all_tab_columns
+    # Stats per object — bounded at 200 objects/schema to keep runtime sane
+    obj_rows = rows[:200]
+    capped = len(rows) > 200
+    for oname, otype in obj_rows:
         cc_rows, _ = _run(
             cur,
             "SELECT COUNT(*) FROM all_tab_columns "
@@ -170,26 +177,22 @@ def inspect_schema(cur, schema, out):
             {"o": schema, "t": oname},
         )
         col_count = cc_rows[0][0] if cc_rows else None
-        # Row count — try SELECT COUNT(*); skip if it errors
         rc_rows, rc_err = _run(cur, f'SELECT COUNT(*) FROM {schema}."{oname}"')
         if rc_err:
-            row_count = None
-            row_err = rc_err
+            rc_str = f"[ERR: {rc_err[:50]}]"
         else:
-            row_count = rc_rows[0][0] if rc_rows else None
-            row_err = None
-        obj_summary.append((oname, otype, col_count, row_count, row_err))
-
-    for oname, otype, cc, rc, rcerr in obj_summary:
-        rc_str = f"{rc:>12,}" if rc is not None else f"[ERR: {rcerr[:50] if rcerr else ''}]"
-        out.write(f"  {otype:<7} {oname:<45} {cc:>4} cols  {rc_str} rows\n")
-    out.write(f"  Total objects in {schema}: {len(obj_summary)}\n")
+            rc = rc_rows[0][0] if rc_rows else 0
+            rc_str = f"{rc:>12,}"
+        out.write(f"  {otype:<7} {oname:<50} {col_count or 0:>4} cols  {rc_str} rows\n")
+    if capped:
+        out.write(f"  [...truncated at 200, schema has {len(rows)} total objects]\n")
+    out.write(f"  Total objects in {schema}: {len(rows)}\n")
 
     # 2. Column-pattern search across this schema
-    matched_cols = []                                                    # list of (table, column, type)
+    matched_cols = []
     for theme, patterns in COLUMN_PATTERNS.items():
         for p in patterns:
-            rows, err = _run(
+            mrows, merr = _run(
                 cur,
                 "SELECT table_name, column_name, data_type "
                 "FROM all_tab_columns "
@@ -197,15 +200,15 @@ def inspect_schema(cur, schema, out):
                 "ORDER BY table_name, column_name",
                 {"o": schema, "p": p},
             )
-            if err:
+            if merr:
                 continue
-            for tname, cname, ctype in rows:
-                matched_cols.append((theme, p, tname, cname, ctype))
+            for tname, cname, ctype in mrows:
+                matched_cols.append((theme, tname, cname, ctype))
 
     if matched_cols:
         _q(out, f"Column matches in {schema} (by theme)")
         last_theme = None
-        for theme, p, tname, cname, ctype in matched_cols:
+        for theme, tname, cname, ctype in matched_cols:
             if theme != last_theme:
                 out.write(f"\n  [{theme}]\n")
                 last_theme = theme
@@ -214,23 +217,22 @@ def inspect_schema(cur, schema, out):
     # 3. Sample tables whose NAME matches our hot patterns
     matched_tables = set()
     for p in TABLE_PATTERNS:
-        rows, err = _run(
+        mrows, merr = _run(
             cur,
-            "SELECT object_name, object_type FROM all_objects "
+            "SELECT object_name FROM all_objects "
             "WHERE owner = :o AND object_type IN ('TABLE', 'VIEW') "
             "AND object_name LIKE :p",
             {"o": schema, "p": p},
         )
-        if err:
+        if merr:
             continue
-        for oname, _otype in rows:
+        for (oname,) in mrows:
             matched_tables.add(oname)
 
     if matched_tables:
         _q(out, f"Sample 2 rows from interesting tables in {schema}")
-        for oname in sorted(matched_tables)[:20]:                        # cap at 20 to bound output
+        for oname in sorted(matched_tables)[:20]:
             out.write(f"\n  --- {schema}.{oname} ---\n")
-            # Column list (cap at 25)
             cols, err = _run(
                 cur,
                 "SELECT column_name, data_type FROM all_tab_columns "
@@ -246,7 +248,6 @@ def inspect_schema(cur, schema, out):
             if len(cols) > 25:
                 out.write(f", ... +{len(cols) - 25} more")
             out.write("\n")
-            # 2 sample rows
             samp, err = _run(cur, f'SELECT * FROM {schema}."{oname}" WHERE ROWNUM <= 2')
             if err:
                 out.write(f"    [ERROR sample] {err}\n")
@@ -258,8 +259,223 @@ def inspect_schema(cur, schema, out):
             for i, row in enumerate(samp, 1):
                 d = dict(zip(cnames, row))
                 out.write(f"    Row {i}: {_safe_str(d, 360)}\n")
-    else:
-        out.write(f"\n  (no table names match HMD-relevant patterns in {schema})\n")
+
+
+# ─── Walk an Oracle connection across every visible schema ─────────
+def walk_oracle(label, user_env, password_env, host_env, port_env, service_env, out):
+    """Walk every schema this Oracle account can read, modulo the skip list."""
+    _section(out, f"ORACLE: {label}")
+    out.write(f"\nServer  : {os.getenv(host_env, '?')}:{os.getenv(port_env, '?')}\n")
+    out.write(f"Service : {os.getenv(service_env, '?')}\n")
+    out.write(f"User    : {os.getenv(user_env, '?')}\n")
+
+    try:
+        import oracledb
+        conn = oracledb.connect(
+            user=os.environ[user_env],
+            password=os.environ[password_env],
+            dsn=f'{os.environ[host_env]}:{os.environ[port_env]}/{os.environ[service_env]}',
+        )
+        cur = conn.cursor()
+    except Exception as e:
+        out.write(f"\n[FATAL] Connect failed: {e}\n")
+        print(f"[FAIL] {label} connect: {e}")
+        return
+
+    # Enumerate every visible schema
+    _q(out, f"All schemas visible to {os.getenv(user_env)}")
+    rows, err = _run(cur, "SELECT DISTINCT owner FROM all_tables ORDER BY owner")
+    if err:
+        out.write(f"  [ERROR] {err}\n")
+        cur.close()
+        conn.close()
+        return
+    visible = [r[0] for r in rows]
+    for s in visible:
+        skip = "  [skip]" if s.upper() in ORACLE_SKIP else ""
+        out.write(f"  {s}{skip}\n")
+    out.write(f"  Total: {len(visible)} schemas visible "
+              f"({sum(1 for s in visible if s.upper() not in ORACLE_SKIP)} after skip-list)\n")
+
+    # Walk each non-skipped schema
+    for schema in visible:
+        if schema.upper() in ORACLE_SKIP:
+            continue
+        print(f"  [{label}] Probing schema {schema} ...")
+        try:
+            inspect_oracle_schema(cur, schema, out)
+        except Exception as e:
+            out.write(f"\n[FATAL in {schema}] {e}\n")
+            print(f"  [WARN] {label}.{schema} crashed: {e}")
+            try:
+                cur.close()
+                cur = conn.cursor()
+            except Exception:
+                pass
+
+    cur.close()
+    conn.close()
+
+
+# ─── MySQL: walk every database visible to the connection ──────────
+def inspect_mysql_database(cur, dbname, out):
+    """Inspect one MySQL database — tables + views + pattern search."""
+    _subsection(out, dbname)
+
+    # All tables + views
+    _q(out, f"All tables + views in `{dbname}`")
+    rows, err = _run(
+        cur,
+        "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS "
+        "FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = %s "
+        "ORDER BY TABLE_TYPE, TABLE_NAME",
+        (dbname,),
+    )
+    if err:
+        out.write(f"  [ERROR] {err}\n")
+        return
+    if not rows:
+        out.write(f"  (zero objects in `{dbname}`)\n")
+        return
+    for tname, ttype, trows in rows:
+        ttype_short = "VIEW" if "VIEW" in (ttype or "").upper() else "TABLE"
+        # Column count via separate query (cheaper than describing each)
+        ccrows, _ = _run(
+            cur,
+            "SELECT COUNT(*) FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+            (dbname, tname),
+        )
+        cc = ccrows[0][0] if ccrows else 0
+        rc_str = f"{trows:>12,}" if trows is not None else "  [n/a]"
+        out.write(f"  {ttype_short:<5} {tname:<50} {cc:>4} cols  {rc_str} rows (est)\n")
+    out.write(f"  Total: {len(rows)} objects\n")
+
+    # Column-pattern search
+    matched = []
+    for theme, patterns in COLUMN_PATTERNS.items():
+        for p in patterns:
+            mrows, merr = _run(
+                cur,
+                "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE "
+                "FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s AND COLUMN_NAME LIKE %s",
+                (dbname, p.lower()),
+            )
+            if merr:
+                continue
+            for tname, cname, ctype in mrows:
+                matched.append((theme, tname, cname, ctype))
+
+    if matched:
+        _q(out, f"Column matches in `{dbname}`")
+        last_theme = None
+        for theme, tname, cname, ctype in matched:
+            if theme != last_theme:
+                out.write(f"\n  [{theme}]\n")
+                last_theme = theme
+            out.write(f"    {tname:<40} {cname:<28} {ctype}\n")
+
+    # Sample tables whose name matches our hot patterns
+    matched_tables = set()
+    for p in TABLE_PATTERNS:
+        mrows, merr = _run(
+            cur,
+            "SELECT TABLE_NAME FROM information_schema.TABLES "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME LIKE %s",
+            (dbname, p.lower()),
+        )
+        if merr:
+            continue
+        for (tname,) in mrows:
+            matched_tables.add(tname)
+
+    if matched_tables:
+        _q(out, f"Sample 2 rows from interesting tables in `{dbname}`")
+        for tname in sorted(matched_tables)[:20]:
+            out.write(f"\n  --- `{dbname}`.`{tname}` ---\n")
+            # Columns
+            crows, _ = _run(
+                cur,
+                "SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
+                "ORDER BY ORDINAL_POSITION",
+                (dbname, tname),
+            )
+            out.write(f"    {len(crows)} columns: ")
+            out.write(", ".join(f"{n}({t})" for n, t in crows[:25]))
+            if len(crows) > 25:
+                out.write(f", ... +{len(crows) - 25} more")
+            out.write("\n")
+            # Sample
+            samp, serr = _run(cur, f"SELECT * FROM `{dbname}`.`{tname}` LIMIT 2")
+            if serr:
+                out.write(f"    [ERROR sample] {serr}\n")
+                continue
+            cnames = [d[0] for d in cur.description] if cur.description else []
+            if not samp:
+                out.write(f"    (empty)\n")
+                continue
+            for i, row in enumerate(samp, 1):
+                d = dict(zip(cnames, row))
+                out.write(f"    Row {i}: {_safe_str(d, 360)}\n")
+
+
+def walk_mysql(out):
+    _section(out, "MYSQL: SuVeechi")
+    out.write(f"\nServer  : {os.getenv('SUVEECHI_HOST', '?')}:"
+              f"{os.getenv('SUVEECHI_PORT', '?')}\n")
+    out.write(f"User    : {os.getenv('SUVEECHI_USER', '?')}\n")
+
+    try:
+        import pymysql
+        # NOTE: do NOT pass `database=` here — we want to see ALL DBs the
+        # account can access, then connect into each one separately.
+        conn = pymysql.connect(
+            host=os.environ["SUVEECHI_HOST"],
+            port=int(os.environ.get("SUVEECHI_PORT", "3306")),
+            user=os.environ["SUVEECHI_USER"],
+            password=os.environ["SUVEECHI_PASSWORD"],
+            connect_timeout=10,
+        )
+        cur = conn.cursor()
+    except Exception as e:
+        out.write(f"\n[FATAL] Connect failed: {e}\n")
+        print(f"[FAIL] SuVeechi connect: {e}")
+        return
+
+    _q(out, f"All databases visible to {os.getenv('SUVEECHI_USER')}")
+    rows, err = _run(cur, "SHOW DATABASES")
+    if err:
+        out.write(f"  [ERROR] {err}\n")
+        cur.close()
+        conn.close()
+        return
+    visible = [r[0] for r in rows]
+    for d in visible:
+        skip = "  [skip]" if d in MYSQL_SKIP else ""
+        out.write(f"  {d}{skip}\n")
+    out.write(f"  Total: {len(visible)} databases visible "
+              f"({sum(1 for d in visible if d not in MYSQL_SKIP)} after skip-list)\n")
+
+    for dbname in visible:
+        if dbname in MYSQL_SKIP:
+            continue
+        print(f"  [SuVeechi] Probing database `{dbname}` ...")
+        try:
+            inspect_mysql_database(cur, dbname, out)
+        except Exception as e:
+            out.write(f"\n[FATAL in `{dbname}`] {e}\n")
+            print(f"  [WARN] SuVeechi.{dbname} crashed: {e}")
+            try:
+                cur.close()
+                cur = conn.cursor()
+            except Exception:
+                pass
+
+    cur.close()
+    conn.close()
 
 
 # ─── main ──────────────────────────────────────────────────────────
@@ -270,25 +486,30 @@ def main():
     out = open(output_path, "w", encoding="utf-8")
 
     out.write("=" * 88 + "\n")
-    out.write("  JSW DB DISCOVERY — DEEP PASS (Oracle cross-schema)\n")
+    out.write("  JSW DB DISCOVERY — DEEP PASS across all 3 connections\n")
     out.write("=" * 88 + "\n")
     out.write(f"  Generated at : {datetime.datetime.now().isoformat(timespec='seconds')}\n")
     out.write(f"  Hostname     : {os.getenv('COMPUTERNAME', 'unknown')}\n")
     out.write(f"  Python       : {sys.version.split()[0]}\n")
     out.write("\n")
-    out.write("  Purpose: walk every reachable schema under the HTS Oracle\n")
-    out.write("  account (ICT_IFACE has SELECT on 27 schemas) and identify\n")
-    out.write("  tables / columns that match HMD-relevant patterns.\n")
-    out.write("\n")
-    out.write(f"  Target schemas ({len(TARGET_SCHEMAS)}):\n")
-    for s in TARGET_SCHEMAS:
-        out.write(f"    {s}\n")
-    out.write("\n  Skipping: Oracle internals (SYS/SYSTEM/CTXSYS/MDSYS/OLAPSYS/XDB/\n")
-    out.write("    DBLINKUSER/APPS), personal sandboxes (J_ANKIT/S_ARUN/TBP),\n")
-    out.write("    out-of-scope billing (INVOICE/CRM/CR_MGT/JSWCRM), and the\n")
-    out.write("    HTS schema (already deeply audited in db_discovery.txt).\n")
+    out.write("  Walks every schema/database each account can read:\n")
+    out.write("    1. SuVeechi MySQL  (view_user)         — `SHOW DATABASES` + walk each\n")
+    out.write("    2. WBATNGL Oracle  (ITROSYSP)          — all_tables.owner + walk each\n")
+    out.write("    3. HTS Oracle      (ICT_IFACE)         — all_tables.owner + walk each\n")
+    out.write("  Skips Oracle internals (SYS/SYSTEM/CTX/MD/OLAP/XDB/...),\n")
+    out.write("  personal sandboxes (J_ANKIT/S_ARUN/TBP), out-of-scope billing,\n")
+    out.write("  and MySQL system DBs (information_schema/mysql/...).\n")
+    out.write("  Bounded: 200 objects/schema, 20 sampled tables/schema.\n")
 
-    # Oracle init
+    # 1. SuVeechi MySQL
+    try:
+        walk_mysql(out)
+        print("[OK] SuVeechi MySQL walk done")
+    except Exception as e:
+        out.write(f"\n[FATAL] SuVeechi walk crashed: {e}\n")
+        print(f"[FAIL] SuVeechi walk: {e}")
+
+    # Init Oracle thick mode once
     try:
         import oracledb
         client = os.getenv("ORACLE_INSTANT_CLIENT_DIR",
@@ -303,40 +524,31 @@ def main():
         out.close()
         return 2
 
-    # Connect via the HTS account (it's the one with multi-schema access)
+    # 2. WBATNGL Oracle
     try:
-        conn = oracledb.connect(
-            user=os.environ["HTS_USER"],
-            password=os.environ["HTS_PASSWORD"],
-            dsn=f'{os.environ["HTS_HOST"]}:'
-                f'{os.environ["HTS_PORT"]}/'
-                f'{os.environ["HTS_SERVICE"]}',
+        walk_oracle(
+            "WBATNGL",
+            "WBATNGL_USER", "WBATNGL_PASSWORD",
+            "WBATNGL_HOST", "WBATNGL_PORT", "WBATNGL_SERVICE",
+            out,
         )
-        cur = conn.cursor()
+        print("[OK] WBATNGL walk done")
     except Exception as e:
-        out.write(f"\n[FATAL] HTS connect failed: {e}\n")
-        print(f"[FAIL] HTS connect: {e}")
-        out.close()
-        return 1
+        out.write(f"\n[FATAL] WBATNGL walk crashed: {e}\n")
+        print(f"[FAIL] WBATNGL walk: {e}")
 
-    # Walk each target schema
-    for schema in TARGET_SCHEMAS:
-        print(f"  Probing {schema} ...")
-        _section(out, f"SCHEMA: {schema}")
-        try:
-            inspect_schema(cur, schema, out)
-        except Exception as e:
-            out.write(f"\n[FATAL in {schema}] {e}\n")
-            print(f"  [WARN] {schema} crashed: {e}")
-            # Reconnect cursor if the connection went bad
-            try:
-                cur.close()
-                cur = conn.cursor()
-            except Exception:
-                pass
-
-    cur.close()
-    conn.close()
+    # 3. HTS Oracle
+    try:
+        walk_oracle(
+            "HTS",
+            "HTS_USER", "HTS_PASSWORD",
+            "HTS_HOST", "HTS_PORT", "HTS_SERVICE",
+            out,
+        )
+        print("[OK] HTS walk done")
+    except Exception as e:
+        out.write(f"\n[FATAL] HTS walk crashed: {e}\n")
+        print(f"[FAIL] HTS walk: {e}")
 
     out.write("\n\n" + "=" * 88 + "\n")
     out.write("  END OF DEEP DISCOVERY REPORT\n")
