@@ -68,10 +68,16 @@ def _cutoff(range_param: str) -> datetime:
 
 def _wb_from_source(source_lab: Optional[str]) -> Optional[str]:
     """
-    Map a BF source_lab to its physical weighbridge name. Heuristic
-    convention matching the design idea and JSW Vijaynagar plant track
-    edges. Inline comment intentional — if an admin reports the wrong
-    WB on a trip, this is the single source of truth to revise.
+    Map a producer source_lab to its physical weighbridge name. Heuristic
+    convention matching the design idea + JSW Vijaynagar plant track edges.
+    Inline comment intentional — if an admin reports the wrong WB on a
+    trip, this is the single source of truth to revise.
+
+    COREX mapping added 2026-05-13 after data audit confirmed `COREX1` /
+    `COREX2` show up in `source_lab` (~12K trips historical). Corex is
+    physically located in the HMY area — one sample row's `location`
+    field literally said "At HMY2 - Corex Point No.125". Split evenly
+    across HMY1/HMY2 until JSW confirms the actual routing.
     """
     if not source_lab:
         return None
@@ -82,6 +88,10 @@ def _wb_from_source(source_lab: Optional[str]) -> Optional[str]:
         return "WB HMY2"
     if s in ("BF5", "BF05"):
         return "WB LRS1"
+    if s in ("COREX1", "COREX01", "COREX-1"):
+        return "WB HMY1"
+    if s in ("COREX2", "COREX02", "COREX-2"):
+        return "WB HMY2"
     return None
 
 
