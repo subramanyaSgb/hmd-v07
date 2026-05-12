@@ -1,17 +1,10 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
+import { formatRelative } from '../utils/time'
 import TopKpiStrip from '../components/OperationsLive/TopKpiStrip'
 import RecentActivityFeed from '../components/OperationsLive/RecentActivityFeed'
 
 const POLL_INTERVAL_MS = 10_000   // matches /api/operations-live/dashboard cache TTL × 2
-
-const formatRelative = (iso) => {
-    if (!iso) return '—'
-    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
-    if (diffSec < 60) return `${diffSec}s ago`
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-    return `${Math.floor(diffSec / 3600)}h ago`
-}
 
 const OperationsLive = () => {
     const [data, setData] = useState(null)

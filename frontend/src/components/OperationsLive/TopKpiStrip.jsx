@@ -43,7 +43,11 @@ const Tile = ({ label, value, unit, icon }) => (
 const fmt1 = (n) => (Number.isFinite(n) ? Number(n).toFixed(1) : '0.0')
 const fmtInt = (n) => (Number.isFinite(n) ? Math.trunc(n).toString() : '0')
 
-const TopKpiStrip = ({ kpis = {} }) => {
+const TopKpiStrip = ({ kpis }) => {
+    // Tolerate both missing arg (default-param) and explicit `null` (parent
+    // may pass `kpis={null}` if API returns the section as null). The
+    // default-param trick alone would NOT fire for explicit null.
+    const safeKpis = kpis || {}
     return (
         <div style={{
             display: 'grid',
@@ -53,29 +57,29 @@ const TopKpiStrip = ({ kpis = {} }) => {
         }}>
             <Tile
                 label="Production Today"
-                value={fmt1(kpis.production_today_mt)}
+                value={fmt1(safeKpis.production_today_mt)}
                 unit="MT"
                 icon={<Factory size={18} />}
             />
             <Tile
                 label="Consumption Today"
-                value={fmt1(kpis.consumption_today_mt)}
+                value={fmt1(safeKpis.consumption_today_mt)}
                 unit="MT"
                 icon={<FlaskConical size={18} />}
             />
             <Tile
                 label="Active Trips Now"
-                value={fmtInt(kpis.active_trips_now)}
+                value={fmtInt(safeKpis.active_trips_now)}
                 icon={<Truck size={18} />}
             />
             <Tile
                 label="Heats In Progress"
-                value={fmtInt(kpis.heats_in_progress)}
+                value={fmtInt(safeKpis.heats_in_progress)}
                 icon={<Flame size={18} />}
             />
             <Tile
                 label="Idle Torpedoes"
-                value={fmtInt(kpis.idle_torpedoes)}
+                value={fmtInt(safeKpis.idle_torpedoes)}
                 icon={<ParkingCircle size={18} />}
             />
         </div>

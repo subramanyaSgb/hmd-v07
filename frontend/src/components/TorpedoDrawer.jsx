@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
+import { formatRelative } from '../utils/time';
 import { statusColor, statusShort } from '../utils/torpedoStatus';
 
 /**
@@ -38,17 +39,6 @@ const haversineKm = (a, b) => {
     const lat2 = toRad(b[0]);
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(h));
-};
-
-const formatRelative = (iso) => {
-    if (!iso) return '—';
-    const then = new Date(iso).getTime();
-    if (Number.isNaN(then)) return '—';
-    const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-    if (diffSec < 60) return `${diffSec}s ago`;
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-    return `${Math.floor(diffSec / 86400)}d ago`;
 };
 
 const formatDateTime = (iso) => {

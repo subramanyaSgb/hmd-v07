@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Activity, Factory, FlaskConical, Truck, Clock } from 'lucide-react'
 import { api } from '../utils/api'
+import { formatRelative } from '../utils/time'
 
 const TIME_WINDOWS = [
     { value: 'today', label: 'TODAY' },
@@ -8,14 +9,6 @@ const TIME_WINDOWS = [
     { value: '7d',    label: '7D' },
     { value: '30d',   label: '30D' },
 ]
-
-const formatRelative = (iso) => {
-    if (!iso) return '—'
-    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
-    if (diffSec < 60) return `${diffSec}s ago`
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-    return `${Math.floor(diffSec / 3600)}h ago`
-}
 
 const PlantLive = () => {
     const [timeWindow, setTimeWindow] = useState('today')

@@ -31,12 +31,25 @@ describe('TopKpiStrip', () => {
     expect(screen.getByText('42')).toBeInTheDocument()
   })
 
-  it('handles missing/null kpis gracefully', () => {
+  it('handles missing kpis by rendering zero values, not undefined/NaN', () => {
     render(<TopKpiStrip kpis={{}} />)
-    // No crash; the 5 labels still render
+    // The 5 labels still render
     expect(screen.getByText(/production today/i)).toBeInTheDocument()
-    // Missing values render as 0 (default) not "undefined" or "NaN"
+    expect(screen.getByText(/idle torpedoes/i)).toBeInTheDocument()
+    // Float tiles (production + consumption) fall back to '0.0'
+    expect(screen.getAllByText('0.0').length).toBeGreaterThanOrEqual(2)
+    // Int tiles (active trips, heats, idle torpedoes) fall back to '0'
+    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(3)
+    // And nothing leaks
     expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/nan/i)).not.toBeInTheDocument()
+  })
+
+  it('handles null kpis by rendering zero values', () => {
+    // Defensive: parent might pass `kpis={null}` if API returns null section
+    render(<TopKpiStrip kpis={null} />)
+    expect(screen.getByText(/production today/i)).toBeInTheDocument()
+    expect(screen.getAllByText('0.0').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(3)
   })
 })

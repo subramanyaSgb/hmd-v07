@@ -1,12 +1,5 @@
 import { Truck, Flame } from 'lucide-react'
-
-const formatRelative = (iso) => {
-    if (!iso) return '—'
-    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
-    if (diffSec < 60) return `${diffSec}s ago`
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-    return `${Math.floor(diffSec / 3600)}h ago`
-}
+import { formatRelative } from '../../utils/time'
 
 const Row = ({ event }) => {
     const isTrip = event.type === 'trip_completed'
@@ -53,8 +46,8 @@ const RecentActivityFeed = ({ events = [] }) => {
                 }}>No recent activity in the last 2 hours.</div>
             ) : (
                 <div>
-                    {events.map((e, i) => (
-                        <Row key={`${e.type}-${e.ref_id}-${i}`} event={e} />
+                    {events.map((e) => (
+                        <Row key={`${e.type}-${e.ref_id}`} event={e} />
                     ))}
                 </div>
             )}
