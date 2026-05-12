@@ -42,8 +42,14 @@ describe('ActiveTripsPanel', () => {
 
   it('handles missing net_weight / elapsed gracefully', () => {
     render(<ActiveTripsPanel trips={sample} />)
-    // Row for T3 has nulls — should not crash and should render dashes
-    expect(screen.getByTestId('trip-row-T3')).toBeInTheDocument()
+    // Row for T3 has nulls — should not crash and should render em-dashes
+    const t3Row = screen.getByTestId('trip-row-T3')
+    expect(t3Row).toBeInTheDocument()
+    // Three em-dashes inside T3's row: source→destination is rendered, but
+    // net_weight and elapsed_minutes both fall back to '—'.
+    // Count em-dashes within the row's text content.
+    const dashCount = (t3Row.textContent.match(/—/g) || []).length
+    expect(dashCount).toBeGreaterThanOrEqual(2)
   })
 
   it('shows empty state when no trips', () => {

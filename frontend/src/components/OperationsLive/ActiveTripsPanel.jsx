@@ -2,7 +2,7 @@ import { statusColor } from '../../utils/torpedoStatus'
 
 const StatusChip = ({ status, tripId }) => {
     const label = status || 'Unknown'
-    const color = status ? statusColor(status) : '#94a3b8'
+    const color = statusColor(status)   // already returns slate for null/undefined
     return (
         <span
             data-testid={`status-chip-${tripId}`}

@@ -4,7 +4,7 @@ import { formatRelative } from '../../utils/time'
 const Row = ({ event }) => {
     const isTrip = event.type === 'trip_completed'
     const Icon = isTrip ? Truck : Flame
-    const color = isTrip ? 'hsl(var(--primary))' : '#f97316'
+    const color = isTrip ? 'hsl(var(--primary))' : 'hsl(var(--warning))'
     return (
         <div data-testid="activity-row" style={{
             display: 'flex',

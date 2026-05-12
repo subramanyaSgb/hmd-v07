@@ -76,7 +76,6 @@ const OperationsLive = () => {
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',  // ~60/40
                 gap: '16px',
-                marginBottom: '0',
             }}>
                 <LiveHeatsPanel converters={data.converters} />
                 <ActiveTripsPanel trips={data.active_trips} />

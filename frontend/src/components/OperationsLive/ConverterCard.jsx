@@ -3,15 +3,18 @@ const STATE_LABEL = {
     HEAT_IN_PROGRESS: 'HEAT IN PROGRESS',
 }
 
-const STATE_COLOR = {
-    IDLE: 'hsl(var(--text-muted))',
-    HEAT_IN_PROGRESS: '#22c55e',   // green
+// Use the bare HSL token (no wrapping hsl()) so we can compose alpha via
+// `hsl(${var} / 0.1)` for the background tint. --success is the forest-green
+// status token (142 71% 40%) that matches AdminStatistics' LIVE badge.
+const STATE_COLOR_HSL = {
+    IDLE: 'var(--text-muted)',
+    HEAT_IN_PROGRESS: 'var(--success)',
 }
 
 const ConverterCard = ({ data }) => {
     if (!data) return null
     const active = data.state === 'HEAT_IN_PROGRESS'
-    const stateColor = STATE_COLOR[data.state] || STATE_COLOR.IDLE
+    const colorVar = STATE_COLOR_HSL[data.state] || STATE_COLOR_HSL.IDLE
 
     return (
         <div
@@ -55,11 +58,11 @@ const ConverterCard = ({ data }) => {
                     fontSize: '10px',
                     fontWeight: 700,
                     letterSpacing: '0.05em',
-                    color: stateColor,
+                    color: `hsl(${colorVar})`,
                     padding: '3px 8px',
                     borderRadius: '999px',
-                    border: `1px solid ${stateColor}`,
-                    background: `${stateColor}1A`,  // 10% opacity tint
+                    border: `1px solid hsl(${colorVar})`,
+                    background: `hsl(${colorVar} / 0.1)`,  // 10% opacity tint
                     whiteSpace: 'nowrap',
                 }}>{STATE_LABEL[data.state] || data.state}</span>
             </div>
