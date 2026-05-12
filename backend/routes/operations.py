@@ -59,6 +59,12 @@ CONVERTERS = ("D", "E", "F", "G", "H", "I")
 # Weight-delta anomaly threshold: |WBATNGL net - SUM(HTS hotmetal)| / WBATNGL net > 10%.
 WEIGHT_DELTA_ANOMALY_PCT = 10.0
 
+# Active-trips KPI window: a trip counts as "active" when it departed within
+# the last N hours AND no matched heat has been recorded. The time-window
+# replaces the old `.limit(200)` candidate cap; bounded by IST-naive
+# elapsed time, not row count.
+ACTIVE_TRIP_WINDOW_HOURS = 6
+
 # Sort whitelist for /api/trip-history-live — never let user input become ORDER BY.
 TRIP_HISTORY_SORT_WHITELIST = {
     "updated_date", "first_tare_time", "out_date", "closetime",
@@ -193,13 +199,19 @@ async def operations_live_dashboard(
         HtsHeatMirror.torpedo_out_time.is_(None),
     ).count()
 
-    # Active trips = out_date NOT NULL AND no matched heat in window.
-    # Compute in Python — small N (typically <20 active trips at a time).
+    # Active trips = out_date in last ACTIVE_TRIP_WINDOW_HOURS AND no matched
+    # heat. The time-window bounds the candidate set (replaces the old
+    # row-cap of 200, which fired spuriously when HTS was frozen and no
+    # trips could match). Captures realistic torpedo cycle times (departure
+    # → load → travel → pour is typically 1-3 hours).
+    recent_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
     candidate_trips = (
         db.query(WbatnglTripMirror)
-        .filter(WbatnglTripMirror.out_date.isnot(None))
+        .filter(
+            WbatnglTripMirror.out_date.isnot(None),
+            WbatnglTripMirror.out_date >= recent_floor,
+        )
         .order_by(WbatnglTripMirror.out_date.desc())
-        .limit(200)
         .all()
     )
     active_trip_rows = [t for t in candidate_trips

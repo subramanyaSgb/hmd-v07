@@ -349,7 +349,8 @@ class TestDashboardActiveTrips:
 
     def test_active_trips_excludes_matched(
             self, db_session, client, auth_headers, trip_at, heat_at):
-        t = datetime.utcnow() - timedelta(minutes=10)
+        # Seed in IST-naive frame so out_date lands within the 6h window.
+        t = _ist_now() - timedelta(minutes=10)
         trip_at("T1", "TLC-22", closetime=t)
         heat_at("D1", "TLC-22", torpedo_in_time=t + timedelta(minutes=5))
         r = client.get("/api/operations-live/dashboard", headers=auth_headers)
@@ -357,7 +358,9 @@ class TestDashboardActiveTrips:
 
     def test_active_trips_sorted_out_date_desc(
             self, db_session, client, auth_headers, trip_at):
-        now = datetime.utcnow()
+        # Both trips must seed within the 6h IST window. Use IST-naive now;
+        # "OLD" at 3h ago + "NEW" at 10min ago both land inside the window.
+        now = _ist_now()
         trip_at("OLD", "TLC-22", closetime=now - timedelta(hours=3),
                 out_date=now - timedelta(hours=3, minutes=10))
         trip_at("NEW", "TLC-23", closetime=now - timedelta(minutes=10),
@@ -395,6 +398,29 @@ class TestDashboardActiveTrips:
                     if row["torpedo_no"] == "TLC-NEW-99"]
         assert len(matching) == 1
         assert matching[0]["current_status"] is None
+
+    def test_active_trips_excludes_old_trips(
+            self, db_session, client, auth_headers, trip_at):
+        # Bug 3: active_trips KPI is now bounded by a 6h IST window, not a
+        # 200-row cap. Trips with out_date older than the window are excluded
+        # from both the KPI count and the rows list — preventing the false
+        # 'active_trips_now=200' reading observed on SMS4 when HTS was frozen.
+        now_ist = _ist_now()
+        # 5h ago — within the 6h window
+        trip_at("RECENT", "TLC-22",
+                closetime=now_ist - timedelta(hours=5),
+                out_date=now_ist - timedelta(hours=5, minutes=30))
+        # 7h ago — outside the 6h window
+        trip_at("OLD", "TLC-23",
+                closetime=now_ist - timedelta(hours=7),
+                out_date=now_ist - timedelta(hours=7, minutes=30))
+        r = client.get("/api/operations-live/dashboard", headers=auth_headers)
+        ids = {row["trip_id"] for row in r.json()["active_trips"]}
+        assert "RECENT" in ids
+        assert "OLD" not in ids
+        # KPI count is also bounded by the window (no longer hits 200 cap).
+        assert r.json()["kpi_strip"]["active_trips_now"] >= 1
+        assert r.json()["kpi_strip"]["active_trips_now"] < 50
 
 
 class TestDashboardActivityFeed:
