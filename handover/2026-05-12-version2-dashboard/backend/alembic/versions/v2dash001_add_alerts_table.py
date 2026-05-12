@@ -1,13 +1,19 @@
 """add alerts table for v2 dashboard alert feed
 
 Revision ID: v2dash001
-Revises: h1i2j3k4l5m6
+Revises: c3e8d219a4b1
 Create Date: 2026-05-12
 
 Adds the `alerts` table backing the Alerts & Exceptions section of the
 new Version 2 dashboard. Rows are inserted by `utils/alert_detector.py`
 which is invoked from the WBATNGL trip sync (chemistry / cold-metal /
 dwell / no-sms-ack) and the SuVeechi GPS sync (gps-stale / battery).
+
+Parent revision picked 2026-05-12 23:20:
+  Originally set to 'h1i2j3k4l5m6' but that already had a child
+  (8ccb1a387ca7 from the WBATNGL mirror chain) so we created a branch.
+  Real latest pre-existing head at sprint time was c3e8d219a4b1
+  (add_fleet_live_locations_fleet_id_index). Re-parented here.
 
 Design doc: docs/plans/2026-05-12-version2-dashboard-design.md
 """
@@ -19,7 +25,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'v2dash001'
-down_revision: Union[str, Sequence[str], None] = 'h1i2j3k4l5m6'
+down_revision: Union[str, Sequence[str], None] = 'c3e8d219a4b1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
