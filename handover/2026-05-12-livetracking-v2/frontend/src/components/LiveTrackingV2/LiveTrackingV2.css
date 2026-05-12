@@ -1,0 +1,687 @@
+/* ─────────────────────────────────────────────────────────────────
+   Live Tracking V2 — scoped styles
+   Layout = 1:1 with desing_idea/tracking.jsx.
+   Theme  = V07 light (white cards, slate text, electric blue accent).
+   All tokens scoped under `.v2-tracking` so the rest of the app
+   is untouched.
+   ───────────────────────────────────────────────────────────────── */
+
+.v2-tracking {
+    /* Palette — alias V07 tokens + 2 extras the design idea uses */
+    --v2t-text:      hsl(var(--text-primary));
+    --v2t-text-dim:  hsl(var(--text-muted));
+    --v2t-card:      hsl(var(--card-bg));
+    --v2t-page:      hsl(var(--main-bg));
+    --v2t-line:      hsl(var(--border-color));
+    --v2t-line-soft: hsl(214 32% 95%);
+    --v2t-primary:   hsl(var(--accent));
+    --v2t-amber:     #f59e0b;
+    --v2t-red:       #ef4444;
+    --v2t-green:     #15803d;
+    --v2t-cyan:      #06b6d4;
+    --v2t-violet:    #a78bfa;
+    --v2t-slate:     #94a3b8;
+
+    /* Layout */
+    height: calc(100vh - var(--header-height));
+    padding: 14px;
+    background: var(--v2t-page);
+    color: var(--v2t-text);
+    font-family: 'Inter', sans-serif;
+    display: grid;
+    grid-template-columns: 270px 1fr;
+    gap: 14px;
+    overflow: hidden;
+    transition: grid-template-columns 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.v2-tracking.panel-open {
+    grid-template-columns: 270px 1fr 360px;
+}
+
+/* Header title left slot (LiveTracking.jsx) */
+.page-title-left {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: hsl(var(--primary));
+}
+
+/* ── Card primitive (shared by list, map, detail) ───────────── */
+.v2-track-card {
+    background: var(--v2t-card);
+    border: 1px solid var(--v2t-line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.v2-track-card-h {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+}
+.v2-track-card-h h3 {
+    margin: 0;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+.v2-track-sub {
+    font-size: 11.5px;
+    color: var(--v2t-text-dim);
+}
+
+/* ── Small primitives ───────────────────────────────────────── */
+.v2-track-dim   { color: var(--v2t-text-dim); }
+.v2-track-mono  {
+    font-family: 'Space Grotesk', 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.v2-track-tiny  { font-size: 10.5px; }
+.v2-track-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--v2t-text-dim);
+    font-size: 12.5px;
+}
+
+/* ── LEFT — Torpedo list panel ──────────────────────────────── */
+.v2-track-list {
+    overflow: hidden;
+}
+.v2-track-search-row {
+    position: relative;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+}
+.v2-track-search-icon {
+    position: absolute;
+    left: 20px;
+    top: 16px;
+    color: var(--v2t-text-dim);
+}
+.v2-track-search-input {
+    width: 100%;
+    padding: 6px 10px 6px 26px;
+    background: var(--v2t-page);
+    border: 1px solid var(--v2t-line-soft);
+    border-radius: 6px;
+    color: var(--v2t-text);
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+}
+.v2-track-search-input:focus {
+    border-color: var(--v2t-primary);
+    box-shadow: 0 0 0 2px hsl(var(--accent) / 0.1);
+}
+.v2-track-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px 10px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+}
+.v2-track-pill {
+    padding: 3px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    background: transparent;
+    color: var(--v2t-text-dim);
+    border: 1px solid var(--v2t-line-soft);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 120ms ease;
+}
+.v2-track-pill:hover {
+    background: var(--v2t-page);
+    color: var(--v2t-text);
+}
+.v2-track-pill.active {
+    background: var(--v2t-primary);
+    color: #fff;
+    border-color: var(--v2t-primary);
+}
+
+.v2-track-list-body {
+    flex: 1;
+    overflow-y: auto;
+}
+.v2-track-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+.v2-track-row:hover {
+    background: hsl(var(--main-bg) / 0.5);
+}
+.v2-track-row.selected {
+    background: hsl(var(--accent) / 0.08);
+    border-left: 2px solid var(--v2t-primary);
+}
+.v2-track-row-icon { flex: 0 0 22px; }
+.v2-track-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.v2-track-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+.v2-track-row-id {
+    font-weight: 600;
+    font-size: 12.5px;
+    font-family: 'Space Grotesk', sans-serif;
+    color: var(--v2t-text);
+}
+.v2-track-row-age {
+    font-family: 'Space Grotesk', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 10.5px;
+    color: var(--v2t-text-dim);
+}
+.v2-track-row-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+.v2-track-row-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.v2-track-row-status-label { color: var(--v2t-text); }
+.v2-track-row-temp {
+    margin-left: auto;
+    font-family: 'Space Grotesk', sans-serif;
+    font-variant-numeric: tabular-nums;
+    color: var(--v2t-text-dim);
+    font-size: 10.5px;
+}
+.v2-track-row-loc {
+    font-size: 10.5px;
+    color: var(--v2t-text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── CENTER — Plant map ──────────────────────────────────────── */
+.v2-track-map-card { overflow: hidden; }
+.v2-track-map-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+.v2-track-map-body .leaflet-container {
+    background: #0a0e16;        /* show on first paint before tiles load */
+}
+
+/* Station rectangles */
+.v2-track-station {
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+.v2-track-station-wrap {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Torpedo marker — dot + number + optional halo + optional pulse */
+.v2-track-torpedo-marker-wrap {
+    background: transparent !important;
+    border: none !important;
+}
+.v2-track-torpedo-marker {
+    position: relative;
+    width: 24px;
+    height: 32px;
+}
+.v2-track-tlc-label {
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffffff;
+    white-space: nowrap;
+}
+.v2-track-torpedo-dot {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 0, 0, 0.5);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.v2-track-halo {
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    opacity: 0.22;
+    pointer-events: none;
+}
+.v2-track-pulse {
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 28px;
+    border: 1.5px solid;
+    border-radius: 50%;
+    animation: v2-track-pulse-anim 1.6s ease-out infinite;
+    pointer-events: none;
+}
+@keyframes v2-track-pulse-anim {
+    0%   { transform: translateX(-50%) scale(0.85); opacity: 0.85; }
+    100% { transform: translateX(-50%) scale(1.7);  opacity: 0;    }
+}
+
+/* In-transit polyline animation (dashed offset crawl) */
+.v2-track-transit-line {
+    animation: v2-track-dash 1.2s linear infinite;
+}
+@keyframes v2-track-dash {
+    to { stroke-dashoffset: -16; }
+}
+
+/* Top-right stats card on the map */
+.v2-track-mapstats {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(13, 18, 27, 0.85);
+    border: 1px solid hsl(214 32% 91%);
+    border-radius: 6px;
+    padding: 8px 12px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    gap: 14px;
+    z-index: 500;
+    color: #fff;
+}
+.v2-track-stat { display: flex; flex-direction: column; gap: 1px; }
+.v2-track-stat-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+}
+.v2-track-stat-lbl {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.65);
+}
+.v2-track-mapstats-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+.v2-track-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: v2-track-blink 1.4s infinite;
+}
+@keyframes v2-track-blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.25; }
+}
+.v2-track-live-text {
+    font-size: 10.5px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Bottom-left station legend on map */
+.v2-track-maplegend {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(13, 18, 27, 0.85);
+    border: 1px solid hsl(214 32% 91%);
+    border-radius: 6px;
+    padding: 8px 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 500;
+    color: #fff;
+}
+.v2-track-maplegend-h {
+    font-size: 9.5px;
+    color: rgba(255, 255, 255, 0.65);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 6px;
+}
+.v2-track-maplegend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    margin-top: 3px;
+}
+.v2-track-maplegend-bar {
+    width: 10px;
+    height: 6px;
+    border-radius: 1px;
+}
+.v2-track-maplegend-lbl { color: rgba(255, 255, 255, 0.85); }
+
+/* ── RIGHT — Torpedo detail panel ───────────────────────────── */
+.v2-track-detail {
+    overflow: hidden;
+    animation: v2-track-slide-in 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes v2-track-slide-in {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+}
+.v2-track-detail-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+}
+/* X button at TOP-LEFT per user spec */
+.v2-track-detail-close {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    border: 1px solid var(--v2t-line-soft);
+    background: var(--v2t-card);
+    color: var(--v2t-text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+.v2-track-detail-close:hover {
+    background: var(--v2t-page);
+    color: var(--v2t-text);
+    border-color: var(--v2t-line);
+}
+.v2-track-detail-header-meta { flex: 1; }
+.v2-track-detail-id {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.v2-track-detail-status-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 3px;
+    font-size: 11.5px;
+}
+.v2-track-detail-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+.v2-track-detail-status { color: var(--v2t-text); }
+
+.v2-track-detail-body {
+    flex: 1;
+    overflow-y: auto;
+}
+.v2-track-detail-section {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--v2t-line-soft);
+}
+.v2-track-detail-section-h {
+    font-size: 10px;
+    color: var(--v2t-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.v2-track-detail-loc-text {
+    font-size: 12.5px;
+    color: var(--v2t-text);
+    line-height: 1.4;
+}
+.v2-track-detail-coords {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 10.5px;
+}
+.v2-track-detail-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+}
+.v2-track-metric {
+    padding: 8px;
+    background: var(--v2t-page);
+    border-radius: 5px;
+    border: 1px solid var(--v2t-line-soft);
+}
+.v2-track-metric-lbl {
+    font-size: 9.5px;
+    color: var(--v2t-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 3px;
+}
+.v2-track-metric-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+.v2-track-metric-val {
+    font-family: 'Space Grotesk', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 16px;
+    font-weight: 600;
+}
+.v2-track-metric-unit {
+    font-size: 10px;
+    color: var(--v2t-text-dim);
+}
+.v2-track-metric-red   .v2-track-metric-val { color: var(--v2t-red); }
+.v2-track-metric-amber .v2-track-metric-val { color: var(--v2t-amber); }
+
+/* Asset rows */
+.v2-track-detail-asset {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+.v2-track-asset-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 7px;
+    background: var(--v2t-page);
+    border-radius: 4px;
+    font-size: 11px;
+}
+.v2-track-asset-lbl { color: var(--v2t-text-dim); }
+.v2-track-asset-val { display: flex; align-items: center; gap: 4px; }
+.v2-track-asset-unit { color: var(--v2t-text-dim); font-size: 10px; }
+.v2-track-asset-note {
+    color: var(--v2t-amber);
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+}
+
+/* Current Trip */
+.v2-track-detail-trip {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.v2-track-detail-trip-route {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+}
+.v2-track-detail-trip-node {
+    font-weight: 600;
+    color: var(--v2t-text);
+}
+
+/* Stage strip (vertical 5-step) — adapted from V2 dashboard StageDots */
+.v2-track-stage-strip {
+    display: flex;
+    width: 100%;
+}
+.v2-track-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 6px;
+    background: var(--v2t-page);
+    border: 1px solid var(--v2t-line-soft);
+    font-size: 10px;
+    color: var(--v2t-text-dim);
+}
+.v2-track-stage:first-child { border-radius: 4px 0 0 4px; }
+.v2-track-stage:last-child  { border-radius: 0 4px 4px 0; }
+.v2-track-stage + .v2-track-stage { border-left: none; }
+.v2-track-stage.done {
+    background: hsl(142 71% 40% / 0.08);
+    color: var(--v2t-text);
+}
+.v2-track-stage.active {
+    background: hsl(var(--accent) / 0.10);
+    color: var(--v2t-text);
+    border-color: hsl(var(--accent) / 0.4);
+}
+.v2-track-stage-num {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--v2t-line);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    background: var(--v2t-card);
+}
+.v2-track-stage.done .v2-track-stage-num {
+    background: var(--v2t-green);
+    color: #fff;
+    border-color: var(--v2t-green);
+}
+.v2-track-stage.active .v2-track-stage-num {
+    border-color: var(--v2t-primary);
+    color: var(--v2t-primary);
+}
+.v2-track-stage-lbl { font-size: 10px; }
+
+/* Recent trips */
+.v2-track-detail-recent {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.v2-track-detail-recent-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px 60px;
+    gap: 6px;
+    padding: 5px 8px;
+    background: var(--v2t-page);
+    border-radius: 4px;
+    font-size: 10.5px;
+    align-items: center;
+}
+
+/* Action footer */
+.v2-track-detail-footer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--v2t-line-soft);
+}
+.v2-track-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--v2t-line);
+    background: var(--v2t-card);
+    color: var(--v2t-text);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 120ms ease;
+}
+.v2-track-btn:hover { background: var(--v2t-page); }
+.v2-track-btn-primary {
+    background: var(--v2t-primary);
+    color: #fff;
+    border-color: var(--v2t-primary);
+}
+.v2-track-btn-primary:hover {
+    background: hsl(217 91% 55%);
+    border-color: hsl(217 91% 55%);
+}
+
+/* Responsive — narrow screens collapse to single column on map */
+@media (max-width: 1280px) {
+    .v2-tracking {
+        grid-template-columns: 240px 1fr;
+    }
+    .v2-tracking.panel-open {
+        grid-template-columns: 240px 1fr 320px;
+    }
+}
+@media (max-width: 1024px) {
+    .v2-tracking.panel-open {
+        /* Detail panel covers map as overlay rather than squishing it */
+        position: relative;
+    }
+    .v2-tracking.panel-open .v2-track-detail {
+        position: absolute;
+        right: 14px;
+        top: 14px;
+        bottom: 14px;
+        width: 320px;
+        z-index: 1000;
+    }
+}
