@@ -63,4 +63,28 @@ describe('OperationsLive — load + error states', () => {
       expect(api.get).toHaveBeenCalledWith('/api/operations-live/dashboard')
     })
   })
+
+  it('renders Updated label using last_sync_at.wbatngl', async () => {
+    const ago = new Date(Date.now() - 5_000).toISOString()  // 5s ago
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      last_sync_at: { wbatngl: ago, hts: null },
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      // Match "Updated 5s ago" or "Updated 6s ago" — tolerate small drift
+      expect(screen.getByText(/updated \d+s ago/i)).toBeInTheDocument()
+    })
+  })
+
+  it('renders Updated — when last_sync_at is null', async () => {
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      last_sync_at: { wbatngl: null, hts: null },
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      expect(screen.getByText(/updated —/i)).toBeInTheDocument()
+    })
+  })
 })

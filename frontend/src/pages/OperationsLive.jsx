@@ -3,6 +3,14 @@ import { api } from '../utils/api'
 
 const POLL_INTERVAL_MS = 10_000   // matches /api/operations-live/dashboard cache TTL × 2
 
+const formatRelative = (iso) => {
+    if (!iso) return '—'
+    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+    if (diffSec < 60) return `${diffSec}s ago`
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
+    return `${Math.floor(diffSec / 3600)}h ago`
+}
+
 const OperationsLive = () => {
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -29,6 +37,12 @@ const OperationsLive = () => {
         return () => { mounted = false; clearInterval(id) }
     }, [])
 
+    const [tick, setTick] = useState(0)
+    useEffect(() => {
+        const id = setInterval(() => setTick(t => t + 1), 1000)
+        return () => clearInterval(id)
+    }, [])
+
     if (loading) {
         return (
             <div className="premium-page-container" style={{ padding: '24px' }}>
@@ -48,8 +62,20 @@ const OperationsLive = () => {
 
     return (
         <div className="premium-page-container" style={{ padding: '24px 32px', overflowY: 'auto' }}>
-            <h2 className="space-grotesk" style={{ margin: 0 }}>Operations Live</h2>
-            {/* Sub-sections wired up in Batch B onward */}
+            <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', marginBottom: '24px', gap: '16px', flexWrap: 'wrap',
+            }}>
+                <h2 className="space-grotesk" style={{ margin: 0 }}>Operations Live</h2>
+                <span style={{
+                    fontSize: '12px',
+                    color: 'hsl(var(--text-muted))',
+                }}>
+                    Updated {formatRelative(data.last_sync_at?.wbatngl)}
+                </span>
+            </div>
+            {/* Sections wired in Batch B onward. Read `tick` so re-renders happen. */}
+            <span style={{ display: 'none' }}>{tick}</span>
         </div>
     )
 }
