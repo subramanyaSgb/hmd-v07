@@ -22,6 +22,7 @@ const MaintenanceScheduling = lazy(() => import('./pages/MaintenanceScheduling')
 const Reports = lazy(() => import('./pages/Reports'))
 const PlantLive = lazy(() => import('./pages/PlantLive'))
 const OperationsLive = lazy(() => import('./pages/OperationsLive'))
+const TripHistoryLive = lazy(() => import('./pages/TripHistoryLive'))
 
 export const ROUTE_CONFIG = {
   '/': { title: 'Live Tracking' },
@@ -33,6 +34,8 @@ export const ROUTE_CONFIG = {
   '/fleet': { title: 'Torpedo Management' },
   '/audit': { title: 'Audit Trail' },
   '/operations': { title: 'Operations Control' },
+  '/operations-live': { title: 'Operations Live' },
+  '/trip-history-live': { title: 'Trip History (Live)' },
   '/configuration': { title: 'Logistics Configuration' },
   '/maintenance': { title: 'Maintenance Scheduling' },
   '/reports': { title: 'Reports' },
@@ -150,6 +153,8 @@ function AppRoutes() {
       <Route path="/trips" element={<PageWrapper><TripManagement /></PageWrapper>} />
       <Route path="/plant" element={<PageWrapper><PlantLive /></PageWrapper>} />
       <Route path="/operations-live" element={<PageWrapper><OperationsLive /></PageWrapper>} />
+      <Route path="/trip-history-live" element={<PageWrapper><TripHistoryLive /></PageWrapper>} />
+      <Route path="/trip-history-live/:trip_id" element={<PageWrapper><TripHistoryLive /></PageWrapper>} />
       <Route path="/settings" element={<PageWrapper><Settings /></PageWrapper>} />
       {isAdminOrTRS && (
         <>
