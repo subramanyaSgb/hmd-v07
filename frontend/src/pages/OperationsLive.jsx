@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
+import TopKpiStrip from '../components/OperationsLive/TopKpiStrip'
 
 const POLL_INTERVAL_MS = 10_000   // matches /api/operations-live/dashboard cache TTL × 2
 
@@ -74,6 +75,7 @@ const OperationsLive = () => {
                     Updated {formatRelative(data.last_sync_at?.wbatngl)}
                 </span>
             </div>
+            <TopKpiStrip kpis={data.kpi_strip} />
             {/* Sections wired in Batch B onward. Read `tick` so re-renders happen. */}
             <span style={{ display: 'none' }}>{tick}</span>
         </div>

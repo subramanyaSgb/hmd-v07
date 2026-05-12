@@ -87,4 +87,23 @@ describe('OperationsLive — load + error states', () => {
       expect(screen.getByText(/updated —/i)).toBeInTheDocument()
     })
   })
+
+  it('renders the TopKpiStrip with real numbers when data arrives', async () => {
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      kpi_strip: {
+        production_today_mt: 14524.6,
+        consumption_today_mt: 8000,
+        active_trips_now: 27,
+        heats_in_progress: 3,
+        idle_torpedoes: 42,
+      },
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      expect(screen.getByText(/14524\.6/)).toBeInTheDocument()
+    })
+    expect(screen.getByText('27')).toBeInTheDocument()
+    expect(screen.getByText('42')).toBeInTheDocument()
+  })
 })
