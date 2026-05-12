@@ -89,7 +89,7 @@ const JswTripOperations = () => {
                     <FilterChip
                         label="Source"
                         value={filters.source}
-                        options={['All', 'BF3', 'BF4', 'BF5', 'COREX1', 'COREX2']}
+                        options={['All', 'BF1', 'BF2', 'BF3', 'BF4', 'BF5', 'COREX1', 'COREX2']}
                         onChange={v => setFilters(f => ({ ...f, source: v }))}
                     />
                     <FilterChip

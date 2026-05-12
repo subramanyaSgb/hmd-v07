@@ -73,15 +73,24 @@ def _wb_from_source(source_lab: Optional[str]) -> Optional[str]:
     Inline comment intentional — if an admin reports the wrong WB on a
     trip, this is the single source of truth to revise.
 
-    COREX mapping added 2026-05-13 after data audit confirmed `COREX1` /
-    `COREX2` show up in `source_lab` (~12K trips historical). Corex is
-    physically located in the HMY area — one sample row's `location`
-    field literally said "At HMY2 - Corex Point No.125". Split evenly
-    across HMY1/HMY2 until JSW confirms the actual routing.
+    Mapping rationale:
+      - BF3 / BF4 / BF5  — active blast furnaces, currently producing
+      - COREX1 / COREX2  — alt iron-making (sample location text in
+        WBATNGL: "At HMY2 - Corex Point No.125" → HMY area)
+      - BF1 / BF2        — legacy blast furnaces, historical only
+        (~23K trips in the mirror). Geographically they fed the
+        original HMY area same as BF3/BF4.
+
+    Pattern: odd numbers → HMY1, even numbers → HMY2, except BF5 which
+    is geographically separate near LRS1. Best-guess until JSW confirms.
     """
     if not source_lab:
         return None
     s = source_lab.strip().upper().replace(" ", "")
+    if s in ("BF1", "BF01"):
+        return "WB HMY1"
+    if s in ("BF2", "BF02"):
+        return "WB HMY2"
     if s in ("BF3", "BF03"):
         return "WB HMY1"
     if s in ("BF4", "BF04"):
