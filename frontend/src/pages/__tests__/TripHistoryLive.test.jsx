@@ -178,4 +178,33 @@ describe('TripHistoryLive — list integration', () => {
         })
         expect(api.get.mock.calls[1][0]).toContain('source_lab=BF4')
     })
+
+    it('reload with full filter URL restores all controls', async () => {
+        api.get.mockResolvedValue(samplePayload())
+        renderAt('/trip-history-live?time_window=7d&source_lab=BF3&destination=SMS2&fleet_id=TLC-22&status=anomaly&shift=A&q=heat&page=2&sort_by=net_weight&sort_order=asc')
+        await waitFor(() => {
+            // Controls reflect the URL
+            expect(screen.getByLabelText(/producer/i)).toHaveValue('BF3')
+            expect(screen.getByLabelText(/consumer/i)).toHaveValue('SMS2')
+            expect(screen.getByLabelText(/torpedo/i)).toHaveValue('TLC-22')
+            expect(screen.getByLabelText(/status/i)).toHaveValue('anomaly')
+            expect(screen.getByLabelText(/shift/i)).toHaveValue('A')
+            expect(screen.getByPlaceholderText(/search/i)).toHaveValue('heat')
+            expect(screen.getByRole('button', { name: /^7d$/i })).toHaveAttribute('data-active', 'true')
+        })
+    })
+
+    it('changing filter while on page 5 resets to page 1', async () => {
+        api.get.mockResolvedValue(samplePayload())
+        renderAt('/trip-history-live?page=5&source_lab=BF3')
+        await waitFor(() => {
+            expect(api.get).toHaveBeenCalledTimes(1)
+        })
+        fireEvent.change(screen.getByLabelText(/consumer/i), { target: { value: 'SMS4' } })
+        await waitFor(() => {
+            expect(api.get).toHaveBeenCalledTimes(2)
+        })
+        expect(api.get.mock.calls[1][0]).toContain('page=1')
+        expect(api.get.mock.calls[1][0]).not.toContain('page=5')
+    })
 })
