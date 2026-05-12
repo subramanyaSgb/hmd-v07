@@ -142,4 +142,21 @@ describe('OperationsLive — load + error states', () => {
       expect(screen.getByText(letter)).toBeInTheDocument()
     }
   })
+
+  it('renders ActiveTripsPanel with the trips from the API', async () => {
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      active_trips: [
+        { trip_id: 'T1', torpedo_no: 'TLC-22',
+          source_lab: 'BF3', destination: 'SMS3',
+          net_weight_mt: 368.0, out_date: '2026-05-12T10:20:11',
+          elapsed_minutes: 52, current_status: 'Moving' },
+      ],
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /active trips/i })).toBeInTheDocument()
+    })
+    expect(screen.getByText(/TLC-22/)).toBeInTheDocument()
+  })
 })

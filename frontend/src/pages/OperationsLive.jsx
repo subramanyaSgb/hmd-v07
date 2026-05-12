@@ -4,6 +4,7 @@ import { formatRelative } from '../utils/time'
 import TopKpiStrip from '../components/OperationsLive/TopKpiStrip'
 import RecentActivityFeed from '../components/OperationsLive/RecentActivityFeed'
 import LiveHeatsPanel from '../components/OperationsLive/LiveHeatsPanel'
+import ActiveTripsPanel from '../components/OperationsLive/ActiveTripsPanel'
 
 const POLL_INTERVAL_MS = 10_000   // matches /api/operations-live/dashboard cache TTL × 2
 
@@ -71,7 +72,15 @@ const OperationsLive = () => {
                 </span>
             </div>
             <TopKpiStrip kpis={data.kpi_strip} />
-            <LiveHeatsPanel converters={data.converters} />
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',  // ~60/40
+                gap: '16px',
+                marginBottom: '0',
+            }}>
+                <LiveHeatsPanel converters={data.converters} />
+                <ActiveTripsPanel trips={data.active_trips} />
+            </div>
             <RecentActivityFeed events={data.activity_feed} />
             {/* Sections wired in Batch B onward. Read `tick` so re-renders happen. */}
             <span style={{ display: 'none' }}>{tick}</span>
