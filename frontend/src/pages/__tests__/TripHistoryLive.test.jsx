@@ -110,9 +110,9 @@ describe('TripHistoryLive — list integration', () => {
         api.get.mockResolvedValueOnce(samplePayload())
         renderAt('/trip-history-live')
         await waitFor(() => {
-            expect(screen.getByText('TLC-22')).toBeInTheDocument()
+            expect(screen.getByRole('cell', { name: 'TLC-22' })).toBeInTheDocument()
         })
-        expect(screen.getByText('TLC-44')).toBeInTheDocument()
+        expect(screen.getByRole('cell', { name: 'TLC-44' })).toBeInTheDocument()
     })
 
     it('renders Pagination with the API total', async () => {
@@ -149,5 +149,33 @@ describe('TripHistoryLive — list integration', () => {
             expect(api.get.mock.calls[1][0]).toContain('sort_by=net_weight')
             expect(api.get.mock.calls[1][0]).toContain('sort_order=desc')
         })
+    })
+
+    it('clicking a time-window chip updates time_window + resets page in the URL', async () => {
+        api.get.mockResolvedValue(samplePayload())
+        renderAt('/trip-history-live?page=3')
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /^7d$/i })).toBeInTheDocument()
+        })
+        fireEvent.click(screen.getByRole('button', { name: /^7d$/i }))
+        await waitFor(() => {
+            expect(api.get).toHaveBeenCalledTimes(2)
+        })
+        const url = api.get.mock.calls[1][0]
+        expect(url).toContain('time_window=7d')
+        expect(url).toContain('page=1')
+    })
+
+    it('selecting a producer dropdown value updates source_lab in the URL', async () => {
+        api.get.mockResolvedValue(samplePayload())
+        renderAt('/trip-history-live')
+        await waitFor(() => {
+            expect(screen.getByLabelText(/producer/i)).toBeInTheDocument()
+        })
+        fireEvent.change(screen.getByLabelText(/producer/i), { target: { value: 'BF4' } })
+        await waitFor(() => {
+            expect(api.get).toHaveBeenCalledTimes(2)
+        })
+        expect(api.get.mock.calls[1][0]).toContain('source_lab=BF4')
     })
 })

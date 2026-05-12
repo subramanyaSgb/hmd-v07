@@ -4,6 +4,7 @@ import { api } from '../utils/api'
 import { formatRelative } from '../utils/time'
 import TripListTable from '../components/TripHistoryLive/TripListTable'
 import Pagination from '../components/TripHistoryLive/Pagination'
+import FilterBar from '../components/TripHistoryLive/FilterBar'
 
 const LIST_POLL_INTERVAL_MS = 30_000   // list refresh; most rows are historical
 const TICK_MS = 1_000
@@ -50,8 +51,9 @@ const TripHistoryLive = () => {
     const updateParams = (mut) => {
         const next = new URLSearchParams(searchParams)
         for (const [k, v] of Object.entries(mut)) {
-            if (v === null || v === undefined || v === '') next.delete(k)
-            else next.set(k, String(v))
+            const s = (v === null || v === undefined) ? '' : String(v).trim()
+            if (s === '') next.delete(k)
+            else next.set(k, s)
         }
         return next
     }
@@ -64,6 +66,25 @@ const TripHistoryLive = () => {
     const handleSortChange = (sortBy, sortOrder) => {
         const next = updateParams({ sort_by: sortBy, sort_order: sortOrder, page: 1 })
         setSearchParams(next)
+    }
+
+    const filterValues = {
+        time_window: searchParams.get('time_window') || 'today',
+        source_lab: searchParams.get('source_lab') || 'all',
+        destination: searchParams.get('destination') || 'all',
+        fleet_id: searchParams.get('fleet_id') || 'all',
+        status: searchParams.get('status') || 'all',
+        shift: searchParams.get('shift') || 'all',
+        q: searchParams.get('q') || '',
+    }
+
+    const handleFilterChange = (mut) => {
+        // Translate 'all' / '' back to URL-absent for cleanliness.
+        const sanitised = {}
+        for (const [k, v] of Object.entries(mut)) {
+            sanitised[k] = (v === 'all' || v === '') ? null : v
+        }
+        setSearchParams(updateParams(sanitised))
     }
 
     const handleRowClick = (tripId) => {
@@ -134,7 +155,7 @@ const TripHistoryLive = () => {
                     Updated {formatRelative(data.last_sync_at?.wbatngl)}
                 </span>
             </div>
-            {/* FilterBar slot — Batch C wires this in */}
+            <FilterBar values={filterValues} onChange={handleFilterChange} />
 
             <TripListTable
                 rows={data.rows}
