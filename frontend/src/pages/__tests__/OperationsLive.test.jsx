@@ -106,4 +106,19 @@ describe('OperationsLive — load + error states', () => {
     expect(screen.getByText('27')).toBeInTheDocument()
     expect(screen.getByText('42')).toBeInTheDocument()
   })
+
+  it('renders RecentActivityFeed with the events from the API', async () => {
+    api.get.mockResolvedValueOnce({
+      ...minimalPayload(),
+      activity_feed: [
+        { type: 'trip_completed', at: '2026-05-12T10:36:11',
+          summary: 'TLC-35 closed BF4 -> SMS2 (340 MT)',
+          ref_id: '74642TLC 352120526' },
+      ],
+    })
+    render(<OperationsLive />)
+    await waitFor(() => {
+      expect(screen.getByText(/TLC-35 closed/)).toBeInTheDocument()
+    })
+  })
 })
