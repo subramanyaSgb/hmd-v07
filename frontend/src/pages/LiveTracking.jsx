@@ -27,10 +27,12 @@ const LiveTracking = () => {
     const [activeTab, setActiveTab] = useState('v1');
 
     useEffect(() => {
+        // NOTE: don't set our own `left` content. Header.jsx auto-renders
+        // the route title (from App.jsx ROUTE_CONFIG: "Live Tracking") in
+        // the left slot as soon as `center` is non-null or
+        // `forceLeftTitle: true` — adding our own would duplicate it.
+        // Matches the Statistics page pattern exactly.
         setHeaderContent({
-            left: (
-                <div className="page-title-left">Live Tracking</div>
-            ),
             center: (
                 <div className="switcher-tabs">
                     <button
@@ -49,9 +51,6 @@ const LiveTracking = () => {
                     </button>
                 </div>
             ),
-            // forceLeftTitle: false → header doesn't render its default
-            // "LIVE TRACKING" centered title. Our `left` slot owns it now.
-            forceLeftTitle: true,
         });
 
         return () => setHeaderContent({

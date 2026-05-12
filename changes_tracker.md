@@ -129,3 +129,4 @@
 - Tests: 166/166 passing (after #11 fix; was 165/166)
 - Commit `0918ef55` pushed to `origin/feature/strip-security-to-local-auth`
 - `npm run build` → OK in 8.12s, all chunks generated
+| 104 | 2026-05-12 23:15 | frontend/src/pages/LiveTracking.jsx | Set `left: <div className="page-title-left">Live Tracking</div>` + `forceLeftTitle: true` | Removed the `left` field entirely; kept only `center` (the toggle) | Header was rendering "LIVE TRACKING" (route auto-title from App.jsx ROUTE_CONFIG, CSS-uppercased) AND "Live Tracking" (my custom left content) side-by-side on V2 page | Header.jsx renders its auto title in the left slot AS SOON AS `center` is non-null OR `forceLeftTitle:true` — providing our own `left` produces a duplicate | Same pattern as Statistics.jsx (which sets only `center`). Title comes from `ROUTE_CONFIG['/'].title = 'Live Tracking'` |
