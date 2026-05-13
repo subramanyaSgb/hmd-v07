@@ -65,6 +65,13 @@ router = APIRouter(prefix="/api/statistics/v2", tags=["v2_dashboard"])
 # (see changes_tracker.md #173).
 _IST_OFFSET = timedelta(hours=5, minutes=30)
 
+# "Active trip" = WBATNGL trip that left BF (out_date set) but hasn't been
+# acked at SMS (sms_ack_time null), bounded to the last N hours so stale
+# forgotten-ack rows don't inflate the counter. Must stay in sync with
+# operations.py:66 — same definition; consider extracting to a shared
+# constants module if a third callsite appears.
+ACTIVE_TRIP_WINDOW_HOURS = 6
+
 
 def _now_ist_naive() -> datetime:
     """UTC now + 5:30 → IST wall-clock naive datetime, matching the
@@ -290,11 +297,29 @@ def overview(
         bucket = spark_anchor - timedelta(hours=offset)
         sparkline.append(by_hour.get(bucket, 0.0))
 
-    # 2) Active trips (V07 native Trip)
-    active_trips = db.query(func.count(Trip.id)).filter(
-        Trip.status.between(TripStatus.ASSIGNED, TripStatus.UNLOADING_ENDED),
-        Trip.deleted_at.is_(None),
+    # 2) Active trips — in-flight definition (Option A, user-confirmed
+    # 2026-05-13): WBATNGL trip departed BF (out_date set), not yet
+    # acknowledged at SMS (sms_ack_time null), within the last
+    # ACTIVE_TRIP_WINDOW_HOURS so we don't include stale forgotten-ack
+    # rows. Matches operations.py:201 definition exactly.
+    #
+    # Pre-fix bug (changes_tracker #174): this counted V07's manual `Trip`
+    # table, which is effectively empty on BF4 because operators never
+    # create manual trips — real trip data flows from JSW's WBATNGL system
+    # via the wbatngl_trip_sync job. The KPI was therefore stuck at 0
+    # while the very same dashboard's bottom Active Trips table (which
+    # correctly reads WbatnglTripMirror) showed 5-7 live rows.
+    active_window_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
+    active_trips = db.query(func.count(WbatnglTripMirror.id)).filter(
+        WbatnglTripMirror.out_date.isnot(None),
+        WbatnglTripMirror.sms_ack_time.is_(None),
+        WbatnglTripMirror.out_date >= active_window_floor,
     ).scalar() or 0
+
+    # "of 53 torpedoes" denominator = gross fleet count (FleetManagement
+    # soft-delete filter), per user decision 2026-05-13. Includes Hot
+    # Repair + Ign Off because the sub-label says "torpedoes" (gross),
+    # not "in-service".
     total_torpedoes = db.query(func.count(FleetManagement.id)).filter(
         FleetManagement.deleted_at.is_(None),
     ).scalar() or 0
