@@ -1,13 +1,18 @@
 import React from 'react';
-import { Flame, Truck, Clock, Thermometer, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Flame, Truck, Clock, Thermometer } from 'lucide-react';
 import { useV2Endpoint } from '../Version2Dashboard';
 import KPICard from './KPICard';
 import KPIBig from './KPIBig';
 
 /**
- * Row 1 of the V2 dashboard. Six KPI cards across — first card is the
+ * Row 1 of the V2 dashboard. Four KPI cards across — first card is the
  * "Hot Metal Dispatched" hero (KPIBig with 24h sparkline). Layout uses
- * CSS grid `repeat(6, 1fr)` defined in Version2Dashboard.css.
+ * CSS grid `repeat(4, 1fr)` defined in Version2Dashboard.css.
+ *
+ * Was six cards until 2026-05-13 — ON-SPEC and CHEM ALERTS were dropped
+ * by user decision (changes_tracker #181). The backend stopped emitting
+ * `on_spec_*` / `chem_alerts_total` / `cold_count` / `chem_count` in the
+ * same commit; see v2_dashboard.py for context if reinstating later.
  *
  * Data comes from /overview which already returns all the KPI numbers
  * + the 24h sparkline. One round-trip per tick.
@@ -59,28 +64,6 @@ const KPIRow = ({ tick }) => {
                 sub="last 24h avg"
                 loading={loading && !k}
                 icon={<Thermometer size={14} />}
-            />
-            <KPICard
-                label="ON-SPEC"
-                value={k
-                    ? (k.on_spec_pct == null ? 'N/A' : k.on_spec_pct)
-                    : '—'}
-                unit={k && k.on_spec_pct == null ? '' : '%'}
-                sub={k
-                    ? `S & Si in spec · BF4 only · n=${k.on_spec_sample_size ?? 0}`
-                    : ''}
-                tone="green"
-                loading={loading && !k}
-                icon={<CheckCircle2 size={14} />}
-            />
-            <KPICard
-                label="CHEM ALERTS"
-                value={k ? k.chem_alerts_total : '—'}
-                unit=""
-                sub={k ? `${k.cold_count} cold · ${k.chem_count} chem` : ''}
-                tone="red"
-                loading={loading && !k}
-                icon={<AlertTriangle size={14} />}
             />
         </div>
     );

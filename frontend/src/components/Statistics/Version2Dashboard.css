@@ -46,7 +46,10 @@
 /* ── Row scaffolding (matches the design idea's grid proportions) ── */
 .v2-row { display: grid; gap: var(--v2-gap); }
 .v2-row-kpis    { /* full-width KPI grid lives on .v2-kpi-grid */ }
-.v2-row-middle  { grid-template-columns: 1.05fr 1.45fr 1.35fr; }
+/* Was 3 cols (1.05 / 1.45 / 1.35) until 2026-05-13 — Producer→Consumer
+   Sankey dropped (changes_tracker #181). Donut keeps its slot;
+   Throughput chart absorbs the freed width on the right. */
+.v2-row-middle  { grid-template-columns: 1fr 2fr; }
 .v2-row-trips   { grid-template-columns: 1.7fr 1fr; }
 .v2-row-bottom  { grid-template-columns: 1.4fr 1fr 1fr; }
 
@@ -161,17 +164,20 @@
 .v2-tag-amber { background: var(--v2-amber-soft); color: var(--v2-amber); }
 .v2-tag-green { background: var(--v2-green-soft); color: var(--v2-green); }
 
-/* ── KPI Row ── */
+/* ── KPI Row ──
+   Was 6 columns until 2026-05-13 (ON-SPEC + CHEM ALERTS dropped by
+   user decision, changes_tracker #181). Tier breakpoints rebalanced
+   for the 4-card layout: 4 → 2 → 1 down the viewport. */
 .v2-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
 }
 @media (max-width: 1280px) {
-    .v2-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    .v2-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 720px) {
-    .v2-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .v2-kpi-grid { grid-template-columns: 1fr; }
 }
 .v2-kpi-card {
     padding: 14px 16px;

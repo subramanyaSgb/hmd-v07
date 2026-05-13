@@ -3,7 +3,6 @@ import { api } from '../../utils/api';
 import KPIRow from './V2/KPIRow';
 import FleetDonut from './V2/FleetDonut';
 import ThroughputChart from './V2/ThroughputChart';
-import FlowSankey from './V2/FlowSankey';
 import ActiveTripsTable from './V2/ActiveTripsTable';
 import AlertFeed from './V2/AlertFeed';
 import ShiftBars from './V2/ShiftBars';
@@ -19,8 +18,10 @@ import './Version2Dashboard.css';
  * slower cadences via the `tickEvery` prop.
  *
  * Sections render the 4-row grid:
- *   Row 1 — KPIRow (6 cards)
- *   Row 2 — Fleet donut · Throughput · Sankey  (1.05 / 1.45 / 1.35 fr)
+ *   Row 1 — KPIRow (4 cards — was 6 until ON-SPEC + CHEM ALERTS dropped
+ *           2026-05-13, changes_tracker #181)
+ *   Row 2 — Fleet donut · Throughput  (1fr / 2fr — was 3 cols with
+ *           Producer→Consumer Sankey until dropped 2026-05-13 #181)
  *   Row 3 — Active trips · Alerts              (1.7 / 1 fr)
  *   Row 4 — Shift bars · Chem histogram · System health (1.4 / 1 / 1 fr)
  *
@@ -48,7 +49,6 @@ const Version2Dashboard = () => {
             <div className="v2-row v2-row-middle">
                 <FleetDonut tick={tick} />
                 <ThroughputChart tick={tick} />
-                <FlowSankey tick={tick} />
             </div>
 
             <div className="v2-row v2-row-trips">
