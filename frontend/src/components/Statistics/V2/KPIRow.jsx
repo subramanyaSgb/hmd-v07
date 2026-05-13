@@ -48,7 +48,7 @@ const KPIRow = ({ tick }) => {
                 label="AVG CYCLE"
                 value={k ? k.avg_cycle_min : '—'}
                 unit="min"
-                sub="tap → SMS ack"
+                sub="BF arrival → SMS ack"
                 loading={loading && !k}
                 icon={<Clock size={14} />}
             />

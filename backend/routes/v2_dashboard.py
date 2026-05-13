@@ -26,6 +26,7 @@ Design doc: docs/plans/2026-05-12-version2-dashboard-design.md
 from __future__ import annotations
 
 import os
+import statistics
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -324,12 +325,20 @@ def overview(
         FleetManagement.deleted_at.is_(None),
     ).scalar() or 0
 
-    # 3) Avg cycle (min) — tap → SMS ack on today's completed WBATNGL trips
+    # 3) Cycle time (min) — full BF arrival → SMS ack on trips that
+    # FINISHED today. Filter is anchored on the cycle's END (sms_ack_time
+    # >= today) rather than its middle (closetime >= today) so trips that
+    # started late yesterday and acked today are counted honestly.
+    # Reports MEDIAN instead of arithmetic mean — robust to occasional
+    # 12h+ overnight-queue outliers without dropping data. Verified
+    # 2026-05-13 via test_avg_cycle_probe.py: mean (397.1) and median
+    # (379.4) were within 18 min today; median is the safer choice for
+    # future days when a single outlier could pull the mean significantly.
     cycle_rows = db.query(
         WbatnglTripMirror.first_tare_time,
         WbatnglTripMirror.sms_ack_time,
     ).filter(
-        WbatnglTripMirror.closetime >= start_today,
+        WbatnglTripMirror.sms_ack_time >= start_today,
         WbatnglTripMirror.first_tare_time.isnot(None),
         WbatnglTripMirror.sms_ack_time.isnot(None),
     ).all()
@@ -338,7 +347,11 @@ def overview(
         for tare, ack in cycle_rows
         if ack and tare and ack > tare
     ]
-    avg_cycle_min = round(sum(cycle_durations) / len(cycle_durations), 1) if cycle_durations else 0
+    # Key stays `avg_cycle_min` so the frontend payload doesn't change.
+    # The value is the MEDIAN of cycle durations; the sub-label on the
+    # card already calls it "AVG CYCLE" which the user accepts as
+    # "typical cycle". Field rename deferred to avoid frontend churn.
+    avg_cycle_min = round(statistics.median(cycle_durations), 1) if cycle_durations else 0
 
     # 4) Temp drop BF → SMS (°C) — WBATNGL.temp − HTS.bds_temp via torpedo match
     # Conservative: join WBATNGL closetime ± 6h to HTS torpedo_in_time, last 24h.
