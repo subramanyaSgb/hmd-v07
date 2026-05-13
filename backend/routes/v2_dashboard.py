@@ -353,19 +353,28 @@ def overview(
     # "typical cycle". Field rename deferred to avoid frontend churn.
     avg_cycle_min = round(statistics.median(cycle_durations), 1) if cycle_durations else 0
 
-    # 4) Temp drop BF → SMS (°C) — WBATNGL.temp − HTS.bds_temp via torpedo match
-    # Conservative: join WBATNGL closetime ± 6h to HTS torpedo_in_time, last 24h.
-    temp_drop_rows = db.query(
-        WbatnglTripMirror.temp.label("bf_temp"),
-        WbatnglTripMirror.bds_temp.label("bds_temp"),
+    # 4) BF tap temp (°C) — average of WBATNGL.temp on trips closed in last 24h.
+    #
+    # Re-purposed 2026-05-13 (changes_tracker #178) from a "BF − SMS temp
+    # drop" calc that always returned 0. The original intent was to subtract
+    # HTS-receive temperature from BF tap temperature, but the SMS-receive
+    # temp (WBATNGL.bds_temp / upstream HTS_BDS_TEMP) is never populated in
+    # our mirror — verified by test_temp_drop_probe.py over 2,314 rows / 30
+    # days / 6 source-labs / 2 source-tables: zero rows ever had bds_temp.
+    # JSW does not appear to capture SMS-receive temperature in any data
+    # source we have access to (HTS mirror has no temp columns either).
+    #
+    # BF tap temp by contrast is well-populated (97% of last-24h rows) with
+    # plausible values (1387-1578 °C, mean 1488). That's a meaningful KPI
+    # on its own — tap-temp drift signals BF furnace issues. So instead of
+    # showing 0 forever, we surface the avg BF tap temp.
+    bf_tap_temp_avg = db.query(
+        func.avg(WbatnglTripMirror.temp),
     ).filter(
         WbatnglTripMirror.closetime >= yesterday,
         WbatnglTripMirror.temp.isnot(None),
-        WbatnglTripMirror.bds_temp.isnot(None),
-    ).all()
-    drops = [float(r.bf_temp) - float(r.bds_temp) for r in temp_drop_rows
-             if r.bf_temp and r.bds_temp]
-    avg_temp_drop = round(sum(drops) / len(drops), 1) if drops else 0
+    ).scalar()
+    avg_bf_tap_temp = round(float(bf_tap_temp_avg), 1) if bf_tap_temp_avg else 0
 
     # 5) On-spec % — S ≤ 0.05 AND Si ≤ 1.2 over last 24h
     spec_q = db.query(
@@ -445,7 +454,7 @@ def overview(
             "active_trips":            int(active_trips),
             "total_torpedoes":         int(total_torpedoes),
             "avg_cycle_min":           avg_cycle_min,
-            "avg_temp_drop_c":         avg_temp_drop,
+            "avg_bf_tap_temp_c":       avg_bf_tap_temp,
             "on_spec_pct":             on_spec_pct,
             "chem_alerts_total":       chem_alerts_total,
             "cold_count":              cold_count,

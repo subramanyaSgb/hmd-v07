@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Truck, Clock, ThermometerSnowflake, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Flame, Truck, Clock, Thermometer, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useV2Endpoint } from '../Version2Dashboard';
 import KPICard from './KPICard';
 import KPIBig from './KPIBig';
@@ -53,12 +53,12 @@ const KPIRow = ({ tick }) => {
                 icon={<Clock size={14} />}
             />
             <KPICard
-                label="TEMP DROP BF→SMS"
-                value={k ? k.avg_temp_drop_c : '—'}
+                label="BF TAP TEMP"
+                value={k ? k.avg_bf_tap_temp_c : '—'}
                 unit="°C"
                 sub="last 24h avg"
                 loading={loading && !k}
-                icon={<ThermometerSnowflake size={14} />}
+                icon={<Thermometer size={14} />}
             />
             <KPICard
                 label="ON-SPEC"
