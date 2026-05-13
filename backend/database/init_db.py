@@ -312,6 +312,15 @@ def init_db():
                 {"config_key": "TRAVEL_WB_TO_PRODUCER_MINUTES", "config_value": "10", "description": "Travel time from weighbridge to producer (minutes)"},
                 {"config_key": "TRAVEL_PRODUCER_TO_WB_MINUTES", "config_value": "10", "description": "Travel time from producer to weighbridge (minutes)"},
                 {"config_key": "TRAVEL_WB_TO_CONSUMER_MINUTES", "config_value": "15", "description": "Travel time from weighbridge to consumer (minutes)"},
+
+                # Hot Metal chemistry spec thresholds — used by V2 Dashboard
+                # Card 5 (ON-SPEC %). Industry-standard defaults based on the
+                # 30-day probe sample at BF4 (2026-05-13, see
+                # test_on_spec_probe.py + changes_tracker #179). Edit in
+                # Strategic Planning → System Settings if JSW updates the spec.
+                {"config_key": "SPEC_S_MAX",  "config_value": "0.05", "description": "Hot Metal sulfur upper limit (%) — trips above this are out of spec"},
+                {"config_key": "SPEC_SI_MIN", "config_value": "0.30", "description": "Hot Metal silicon lower limit (%) — below this = cold metal risk at SMS"},
+                {"config_key": "SPEC_SI_MAX", "config_value": "1.20", "description": "Hot Metal silicon upper limit (%) — above this stresses BOF slag chemistry"},
             ]
             added_count = 0
             for cfg_data in required_configs:

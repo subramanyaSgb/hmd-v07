@@ -62,9 +62,13 @@ const KPIRow = ({ tick }) => {
             />
             <KPICard
                 label="ON-SPEC"
-                value={k ? k.on_spec_pct : '—'}
-                unit="%"
-                sub="S & Si within band"
+                value={k
+                    ? (k.on_spec_pct == null ? 'N/A' : k.on_spec_pct)
+                    : '—'}
+                unit={k && k.on_spec_pct == null ? '' : '%'}
+                sub={k
+                    ? `S & Si in spec · BF4 only · n=${k.on_spec_sample_size ?? 0}`
+                    : ''}
                 tone="green"
                 loading={loading && !k}
                 icon={<CheckCircle2 size={14} />}

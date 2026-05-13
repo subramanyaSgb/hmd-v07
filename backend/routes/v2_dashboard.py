@@ -49,6 +49,7 @@ from ..database.models import (
     WbatnglTripMirror,
 )
 from ..logger import logger
+from ..utils.analytics_helpers import get_config
 from ..utils.security import get_current_user_required
 
 
@@ -376,12 +377,30 @@ def overview(
     ).scalar()
     avg_bf_tap_temp = round(float(bf_tap_temp_avg), 1) if bf_tap_temp_avg else 0
 
-    # 5) On-spec % — S ≤ 0.05 AND Si ≤ 1.2 over last 24h
+    # 5) On-spec % — S ≤ SPEC_S_MAX AND SPEC_SI_MIN ≤ Si ≤ SPEC_SI_MAX over last 24h.
+    #
+    # Thresholds moved to SystemConfig 2026-05-13 (changes_tracker #179) so
+    # JSW can tune per-grade without a redeploy. Defaults match industry
+    # baselines + BF4 30-day probe distribution (see test_on_spec_probe.py).
+    #
+    # COVERAGE NOTE: only the BF4 source_lab reports Si in WBATNGL. The
+    # other 5 sources (BF1, BF2, BF5, COREX1, COREX2) have no si_l data
+    # so they're silently excluded from the denominator. The KPI is
+    # structurally a "BF4 chem in-spec" metric — surface that in the
+    # sub-label so operators don't read it as plant-wide.
+    # Separate audit ticket: investigate why non-BF4 source views lack Si
+    # and whether the high-S tail in those rows (median 0.47, max 2.83) is
+    # a unit/scale issue at upstream.
+    spec_s_max  = float(get_config(db, "SPEC_S_MAX",  "0.05"))
+    spec_si_min = float(get_config(db, "SPEC_SI_MIN", "0.30"))
+    spec_si_max = float(get_config(db, "SPEC_SI_MAX", "1.20"))
+
     spec_q = db.query(
         func.count(WbatnglTripMirror.id).label("total"),
         func.sum(case(
-            (and_(WbatnglTripMirror.s_l <= 0.05,
-                  WbatnglTripMirror.si_l <= 1.20), 1),
+            (and_(WbatnglTripMirror.s_l  <= spec_s_max,
+                  WbatnglTripMirror.si_l >= spec_si_min,
+                  WbatnglTripMirror.si_l <= spec_si_max), 1),
             else_=0,
         )).label("on_spec"),
     ).filter(
@@ -389,10 +408,14 @@ def overview(
         WbatnglTripMirror.s_l.isnot(None),
         WbatnglTripMirror.si_l.isnot(None),
     ).first()
-    if spec_q and spec_q.total:
-        on_spec_pct = round((spec_q.on_spec or 0) * 100.0 / spec_q.total, 1)
+    spec_sample_size = int(spec_q.total) if (spec_q and spec_q.total) else 0
+    if spec_sample_size:
+        on_spec_pct = round((spec_q.on_spec or 0) * 100.0 / spec_sample_size, 1)
     else:
-        on_spec_pct = 0
+        # No chem data in the window → return None so the frontend can
+        # render "N/A" rather than a misleading "0 %" (would look like
+        # "every trip failed" when reality is "we have no data yet").
+        on_spec_pct = None
 
     # 6) Chem alerts (last 24h, unacked) split by kind
     alert_counts = db.query(
@@ -455,7 +478,13 @@ def overview(
             "total_torpedoes":         int(total_torpedoes),
             "avg_cycle_min":           avg_cycle_min,
             "avg_bf_tap_temp_c":       avg_bf_tap_temp,
-            "on_spec_pct":             on_spec_pct,
+            "on_spec_pct":             on_spec_pct,           # may be null when sample_size=0
+            "on_spec_sample_size":     spec_sample_size,
+            "on_spec_thresholds":      {
+                "s_max":  spec_s_max,
+                "si_min": spec_si_min,
+                "si_max": spec_si_max,
+            },
             "chem_alerts_total":       chem_alerts_total,
             "cold_count":              cold_count,
             "chem_count":              chem_count,
