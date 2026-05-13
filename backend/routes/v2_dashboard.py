@@ -42,7 +42,6 @@ from ..database.models import (
     FleetLiveLocation,
     FleetManagement,
     HtsHeatMirror,
-    MaintenanceSchedule,
     ShiftConfig,
     Trip,
     User,
@@ -92,15 +91,6 @@ def _hours_ago(h: int) -> datetime:
     return _now_ist_naive() - timedelta(hours=h)
 
 
-def _active_torpedo_id_set(db: Session) -> set[str]:
-    """fleet_ids with a currently-active Trip (status in 1..12)."""
-    rows = db.query(Trip.torpedo_id).filter(
-        Trip.status.between(TripStatus.ASSIGNED, TripStatus.UNLOADING_ENDED),
-        Trip.torpedo_id.isnot(None),
-    ).all()
-    return {r[0] for r in rows if r[0]}
-
-
 def _shift_from_hour(hour: int, shifts: list[ShiftConfig]) -> Optional[str]:
     """
     Resolve the configured shift name for a given clock hour. If no
@@ -121,115 +111,58 @@ def _shift_from_hour(hour: int, shifts: list[ShiftConfig]) -> Optional[str]:
     return None
 
 
-def _classify_torpedo(
-    fleet: FleetManagement,
-    active_set: set[str],
-    maintenance_active: set[str],
-) -> str:
-    """
-    Derive one of 7 dashboard buckets from FleetManagement + Trip state
-    + maintenance state. See design doc §4 / §6.4.
-
-    Buckets:
-      Loading | In Transit | At SMS | Returning | Idle | Hot Repair | Ign Off
-    """
-    fid = fleet.fleet_id
-    status = (fleet.status or "").strip()
-
-    if status == "Maintenance":
-        return "Hot Repair" if fid in maintenance_active else "Ign Off"
-
-    has_trip = fid in active_set
-    if status == "Moving":
-        return "In Transit" if has_trip else "Returning"
-
-    # Operating or Assigned or anything else non-maintenance
-    if not has_trip:
-        return "Idle"
-
-    # has an active trip — look at trip status to split Loading vs At SMS
-    trip = None
-    # cheap lookup — we need just the Trip.status
-    # caller may want a batched version; this is fine for ≤53 torpedoes
-    # if perf becomes an issue, hoist into _classify_batch
-    # noqa
-    # (filled by caller through a join in _fleet_breakdown to avoid N+1)
-    return "Loading"  # default if caller didn't pre-classify (see _fleet_breakdown)
-
-
 def _fleet_breakdown(db: Session) -> dict:
     """
-    Build the 7-bucket donut payload by joining FleetManagement against
-    the currently-active Trip per torpedo and the maintenance schedule.
+    3-bucket donut classifier — MAINTENANCE / ACTIVE / IDLE. First match wins:
+
+      1. FleetManagement.status == "Maintenance"        →  MAINTENANCE
+      2. has-in-flight-trip OR status == "Moving"       →  ACTIVE
+      3. else                                           →  IDLE
+
+    `has-in-flight-trip` = WbatnglTripMirror row exists for this torpedo
+    where out_date IS NOT NULL, sms_ack_time IS NULL, out_date >=
+    now_ist - ACTIVE_TRIP_WINDOW_HOURS. Same definition as Card 2 KPI —
+    single source of truth for "in flight".
+
+    History (changes_tracker #182):
+      - Pre-fix this returned 7 buckets (Loading / In Transit / At SMS /
+        Returning / Idle / Hot Repair / Ign Off). 3 were always 0 because
+        the trip-stage classifier read V07's empty Trip table.
+      - Hot Repair bucket required MaintenanceSchedule rows, but probe
+        (test_fleet_donut_probe.py) confirmed the table is empty on BF4.
+      - V07 Trip + MaintenanceSchedule lookups dropped entirely.
+      - IST timezone bug at the old `today = datetime.utcnow().date()`
+        line is now moot — no date comparison left.
+
     Returns:
-      {"total": 53, "breakdown": {"Loading": 8, "In Transit": 6, ...}}
+      {"total": 53, "breakdown": {"MAINTENANCE": 4, "ACTIVE": 6, "IDLE": 43}}
     """
-    today = datetime.utcnow().date()
-
-    # torpedoes currently in maintenance per the schedule
-    maint_rows = db.query(MaintenanceSchedule.node_id).filter(
-        MaintenanceSchedule.start_date <= today,
-        MaintenanceSchedule.end_date >= today,
-    ).all()
-    maintenance_active = {r[0] for r in maint_rows if r[0]}
-
-    # Latest active trip per torpedo — we want a single Trip.status per fleet_id
-    # so we can split Loading / At SMS / Returning on phase.
-    trip_q = db.query(Trip.torpedo_id, Trip.status).filter(
-        Trip.status.between(TripStatus.ASSIGNED, TripStatus.UNLOADING_ENDED),
-        Trip.torpedo_id.isnot(None),
-        Trip.deleted_at.is_(None),
-    ).order_by(Trip.torpedo_id, Trip.created_at.desc())
-    trip_status_by_torpedo: dict[str, int] = {}
-    for tid, st in trip_q:
-        # first row per torpedo wins (most recent active trip)
-        trip_status_by_torpedo.setdefault(tid, st)
+    in_flight_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
+    in_flight_rows = db.query(WbatnglTripMirror.fleet_id).filter(
+        WbatnglTripMirror.out_date.isnot(None),
+        WbatnglTripMirror.sms_ack_time.is_(None),
+        WbatnglTripMirror.out_date >= in_flight_floor,
+        WbatnglTripMirror.fleet_id.isnot(None),
+    ).distinct().all()
+    in_flight_set = {r[0] for r in in_flight_rows}
 
     fleets = db.query(FleetManagement).filter(
         FleetManagement.deleted_at.is_(None),
     ).all()
 
-    buckets = {k: 0 for k in (
-        "Loading", "In Transit", "At SMS", "Returning",
-        "Idle", "Hot Repair", "Ign Off",
-    )}
-
+    buckets = {"MAINTENANCE": 0, "ACTIVE": 0, "IDLE": 0}
     for f in fleets:
-        fid = f.fleet_id
         status = (f.status or "").strip()
-
         if status == "Maintenance":
-            buckets["Hot Repair" if fid in maintenance_active else "Ign Off"] += 1
-            continue
-
-        trip_status = trip_status_by_torpedo.get(fid)
-
-        if status == "Moving":
-            if trip_status is None:
-                buckets["Returning"] += 1
-            elif TripStatus.is_at_consumer(trip_status):
-                # rare: status="Moving" but trip phase is at-consumer —
-                # treat as transit to be safe (still moving)
-                buckets["In Transit"] += 1
-            elif trip_status == TripStatus.PRODUCER_EXITED:
-                buckets["In Transit"] += 1
-            elif trip_status >= TripStatus.UNLOADING_ENDED:
-                buckets["Returning"] += 1
-            else:
-                buckets["In Transit"] += 1
-            continue
-
-        # Operating / Assigned / Idle (anything not Maintenance/Moving)
-        if trip_status is None:
-            buckets["Idle"] += 1
-        elif TripStatus.is_at_producer(trip_status) or trip_status in (
-            TripStatus.WB_TARE_ENTRY, TripStatus.WB_TARE_RECORDED, TripStatus.ASSIGNED
-        ):
-            buckets["Loading"] += 1
-        elif TripStatus.is_at_consumer(trip_status):
-            buckets["At SMS"] += 1
+            # Wins even if a stale in-flight trip exists (see TLC-36 case
+            # 2026-05-13 — torpedo went to maintenance mid-trip and the
+            # trip was never acked; data-hygiene anomaly to investigate
+            # separately, but the bucket assignment is correct).
+            buckets["MAINTENANCE"] += 1
+        elif f.fleet_id in in_flight_set or status == "Moving":
+            buckets["ACTIVE"] += 1
         else:
-            buckets["Idle"] += 1
+            buckets["IDLE"] += 1
 
     return {"total": len(fleets), "breakdown": buckets}
 

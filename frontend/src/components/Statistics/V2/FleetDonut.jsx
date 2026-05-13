@@ -3,23 +3,26 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useV2Endpoint } from '../Version2Dashboard';
 
 /**
- * Torpedo Fleet Status donut. 7 segments derived from FleetManagement
- * + active-Trip phase + maintenance schedule (see backend
- * `_fleet_breakdown`). Uses Recharts PieChart for accessibility (free
- * tooltips, keyboard nav) — donut hole renders the total number with
- * a centered "TORPEDOES" label.
+ * Torpedo Fleet Status donut. 3 segments — MAINTENANCE / ACTIVE / IDLE.
+ * Backend classifier (see `_fleet_breakdown` in v2_dashboard.py):
+ *   - MAINTENANCE = FleetManagement.status == "Maintenance"
+ *   - ACTIVE      = in-flight WBATNGL trip OR FM.status == "Moving"
+ *   - IDLE        = everything else
  *
- * Color order matches desing_idea/dashboard.jsx exactly so the visual
- * reference holds.
+ * History (changes_tracker #182): was 7 segments until 2026-05-13 — 3
+ * always-0 (Loading / In Transit / At SMS) because the trip-stage logic
+ * read V07's empty manual Trip table; "Hot Repair" required a never-
+ * populated MaintenanceSchedule. Collapsed to 3 clear operational
+ * buckets after probe validation.
+ *
+ * Uses Recharts PieChart for accessibility (free tooltips, keyboard
+ * nav). Donut hole renders the total number with a centered
+ * "TORPEDOES" label.
  */
 const SEGMENTS = [
-    { key: 'Loading',     color: '#f59e0b' },
-    { key: 'In Transit',  color: '#3b82f6' },
-    { key: 'At SMS',      color: '#06b6d4' },
-    { key: 'Returning',   color: '#a78bfa' },
-    { key: 'Idle',        color: '#94a3b8' },
-    { key: 'Hot Repair',  color: '#ef4444' },
-    { key: 'Ign Off',     color: '#64748b' },
+    { key: 'ACTIVE',      color: '#15803d' },                            // green — productive
+    { key: 'IDLE',        color: '#94a3b8' },                            // gray  — waiting
+    { key: 'MAINTENANCE', color: '#f59e0b' },                            // amber — out of service
 ];
 
 const FleetDonut = ({ tick }) => {
