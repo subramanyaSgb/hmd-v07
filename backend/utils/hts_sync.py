@@ -334,28 +334,29 @@ def pull_caster_hp(db: Session, conn) -> dict:
 
     cursor = conn.cursor()
     try:
-        # Sanity probe on first run (empty mirror, wm=epoch).
-        if wm == _WATERMARK_FLOOR:
-            try:
-                probe_cur = conn.cursor()
-                probe_cur.execute(
-                    "SELECT COUNT(*), MAX(CASTER_DATE) "
-                    "FROM HTS.H_CASTER_HEAT_PROCESS"
-                )
-                probe = probe_cur.fetchone()
-                probe_cur.close()
-                logger.info(
-                    f"HTS caster_hp probe: upstream total={probe[0]}, "
-                    f"max_caster_date={probe[1]}"
-                )
-            except Exception:
-                logger.exception("HTS caster_hp probe failed (non-fatal)")
+        # Sanity probe — runs EVERY tick now (was: only on empty mirror)
+        # so we can correlate upstream max(CASTER_DATE) with our wm and
+        # see why fetched=0 even on subsequent ticks.
+        try:
+            probe_cur = conn.cursor()
+            probe_cur.execute(
+                "SELECT COUNT(*), MAX(CASTER_DATE) "
+                "FROM HTS.H_CASTER_HEAT_PROCESS"
+            )
+            probe = probe_cur.fetchone()
+            probe_cur.close()
+            logger.info(
+                f"HTS caster_hp probe: upstream total={probe[0]}, "
+                f"max_caster_date={probe[1]}"
+            )
+        except Exception:
+            logger.exception("HTS caster_hp probe failed (non-fatal)")
 
         sql = (
             f"SELECT {_CASTER_HP_COLS} FROM HTS.H_CASTER_HEAT_PROCESS "
             f"WHERE CASTER_DATE > :wm"
         )
-        logger.debug(f"HTS caster_hp SQL exec: wm={wm!r}")
+        logger.info(f"HTS caster_hp SQL exec: wm={wm!r}")
         cursor.execute(sql, wm=wm)
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
@@ -441,7 +442,7 @@ def pull_caster_cn(db: Session, conn) -> dict:
     )
     cursor = conn.cursor()
     try:
-        logger.debug(f"HTS caster_cn SQL exec: wm={wm!r}")
+        logger.info(f"HTS caster_cn SQL exec: wm={wm!r}")
         cursor.execute(sql, wm=wm)
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
@@ -509,7 +510,7 @@ def pull_breakdowns(db: Session, conn) -> dict:
     )
     cursor = conn.cursor()
     try:
-        logger.debug(f"HTS breakdowns SQL exec: wm={wm!r}")
+        logger.info(f"HTS breakdowns SQL exec: wm={wm!r}")
         cursor.execute(sql, wm=wm)
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
