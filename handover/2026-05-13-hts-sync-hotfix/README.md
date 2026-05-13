@@ -21,6 +21,18 @@ HTS unit_codes OK: fetched=36 upserted=36                                  ← O
 
 SMS Performance page therefore shows all-zero KPIs and "no heats in range" — the mirrors are empty.
 
+## Root cause confirmed (probe output, 2026-05-13 11:10)
+
+The probe (`test_hts_caster_probe.py`) proved:
+
+- Upstream H_CASTER_HEAT_PROCESS has **15,575 rows**, max CASTER_DATE = **2026-05-13 09:45:59** (fresh today)
+- The exact `WHERE CASTER_DATE > :wm` pattern with `wm=datetime(1970,1,1)` returns **15,574 rows** on a fresh cursor
+- Both bare and quoted SELECT lists work
+
+So the upstream is fine and the SQL is fine. The only remaining variable: **the shared cursor across 5 sequential `cursor.execute(...)` calls in `run_once`**. oracledb appears to leak bind/statement state across re-executions in a way that silently returns 0 rows for the 2nd+ query.
+
+**Fix (added in this hotfix v2):** every pull function now opens its OWN fresh cursor via `conn.cursor()` and closes it in `finally`. The orchestrator no longer creates a shared cursor.
+
 ## What changed in this hotfix
 
 ### 1. Breakdown dedupe (`pull_breakdowns`)
@@ -29,7 +41,13 @@ Upstream H_EQUP_BREAKDOWNS has duplicate `(unit_code, brk_date, reason)` rows. P
 ### 2. Quoted reserved keywords in caster SQL
 `SEQUENCE`, `SHIFT`, `DELAY`, `YIELD` are Oracle non-reserved keywords. They *usually* work bare in a SELECT, but quoting them defensively (`"SEQUENCE"`, etc.) removes one possible cause of silent 0-row returns.
 
-### 3. Diagnostic probe on empty caster_hp mirror
+### 3. Fresh cursor per pull (THE root-cause fix)
+
+All 5 pull functions changed signature from `(db, cursor, ...)` → `(db, conn, ...)`. Each opens its own `conn.cursor()` at start and closes it in `finally`. The orchestrator no longer opens a shared cursor.
+
+This is what fixes the 0-rows-from-caster_hp symptom. The probe proved everything else (upstream data, SQL, bind binding) is fine.
+
+### 4. Diagnostic probe on empty caster_hp mirror
 When the mirror is empty (watermark=epoch), `pull_caster_hp` now logs a one-shot probe:
 
 ```
@@ -38,7 +56,7 @@ HTS caster_hp probe: upstream total=<n>, max_caster_date=<date>
 
 This tells us in the next sync tick whether the upstream is actually empty / has stale data / matches our WHERE clause.
 
-### 4. NEW diagnostic script `test_hts_caster_probe.py`
+### 5. NEW diagnostic script `test_hts_caster_probe.py`
 At repo root. Runs 6 probes directly against Oracle:
 - A. Bare row count of `H_CASTER_HEAT_PROCESS`
 - B. CASTER_DATE NULL distribution + min/max

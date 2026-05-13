@@ -177,16 +177,25 @@ def _connect_oracle():
     )
 
 
-def pull_and_upsert(db: Session, cursor, watermark: datetime) -> dict:
+def pull_and_upsert(db: Session, conn, watermark: datetime) -> dict:
     """
     Run the incremental SELECT against HTS view, upsert into mirror.
     Returns stats dict: fetched / upserted / skipped_no_heat_no / errors.
+
+    Note: opens a fresh cursor for this pull. Prior to 2026-05-13 hotfix
+    this whole module shared one cursor across all 5 syncs in run_once,
+    which caused mysterious 0-row returns on the 2nd+ executes — likely
+    bind-state leak across re-executions. Fresh cursor per pull fixes it
+    and costs us essentially nothing (cursors are cheap).
     """
     view = os.getenv("HTS_VIEW", "HTS.VW_HTS_HOTMETAL_DATA")
     sql = f"SELECT * FROM {view} WHERE TORPEDO_IN_TIME > :wm"
+    cursor = conn.cursor()
+    logger.debug(f"HTS hotmetal SQL exec: wm={watermark!r}")
     cursor.execute(sql, wm=watermark)
     rows = cursor.fetchall()
     cols = [d[0] for d in cursor.description]
+    cursor.close()
 
     stats = {"fetched": len(rows), "upserted": 0,
              "skipped_no_heat_no": 0, "errors": 0}
@@ -314,44 +323,45 @@ def row_to_caster_hp_dict(row, cols):
     }
 
 
-def pull_caster_hp(db: Session, cursor) -> dict:
+def pull_caster_hp(db: Session, conn) -> dict:
     """
     Pulls H_CASTER_HEAT_PROCESS rows newer than the local watermark.
-
-    Diagnostic note (2026-05-13): the first BF4 run returned 0 fetched
-    despite watermark=epoch. To debug we now also run a quick
-    `MAX(CASTER_DATE)` probe on the upstream when watermark is the
-    epoch floor — if upstream max exists but our WHERE returns 0,
-    something is wrong with the date comparison. Logged at WARNING.
+    Uses a fresh cursor (see pull_and_upsert docstring for rationale).
     """
     wm = db.execute(
         select(func.max(HCasterHeatProcessMirror.caster_date))
     ).scalar() or _WATERMARK_FLOOR
 
-    # If mirror is empty (watermark = epoch), do a sanity probe of the
-    # upstream max(CASTER_DATE) so we can see in the log whether the
-    # source actually has data and where the cutoff sits.
-    if wm == _WATERMARK_FLOOR:
-        try:
-            cursor.execute(
-                "SELECT COUNT(*), MAX(CASTER_DATE) "
-                "FROM HTS.H_CASTER_HEAT_PROCESS"
-            )
-            probe = cursor.fetchone()
-            logger.info(
-                f"HTS caster_hp probe: upstream total={probe[0]}, "
-                f"max_caster_date={probe[1]}"
-            )
-        except Exception:
-            logger.exception("HTS caster_hp probe failed (non-fatal)")
+    cursor = conn.cursor()
+    try:
+        # Sanity probe on first run (empty mirror, wm=epoch).
+        if wm == _WATERMARK_FLOOR:
+            try:
+                probe_cur = conn.cursor()
+                probe_cur.execute(
+                    "SELECT COUNT(*), MAX(CASTER_DATE) "
+                    "FROM HTS.H_CASTER_HEAT_PROCESS"
+                )
+                probe = probe_cur.fetchone()
+                probe_cur.close()
+                logger.info(
+                    f"HTS caster_hp probe: upstream total={probe[0]}, "
+                    f"max_caster_date={probe[1]}"
+                )
+            except Exception:
+                logger.exception("HTS caster_hp probe failed (non-fatal)")
 
-    sql = (
-        f"SELECT {_CASTER_HP_COLS} FROM HTS.H_CASTER_HEAT_PROCESS "
-        f"WHERE CASTER_DATE > :wm"
-    )
-    cursor.execute(sql, wm=wm)
-    rows = cursor.fetchall()
-    cols = [d[0] for d in cursor.description]
+        sql = (
+            f"SELECT {_CASTER_HP_COLS} FROM HTS.H_CASTER_HEAT_PROCESS "
+            f"WHERE CASTER_DATE > :wm"
+        )
+        logger.debug(f"HTS caster_hp SQL exec: wm={wm!r}")
+        cursor.execute(sql, wm=wm)
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    finally:
+        cursor.close()
+
     mirror_rows = []
     skipped = 0
     for r in rows:
@@ -412,12 +422,13 @@ def row_to_caster_cn_dict(row, cols):
     }
 
 
-def pull_caster_cn(db: Session, cursor) -> dict:
+def pull_caster_cn(db: Session, conn) -> dict:
     """
     Consumption has no CASTER_DATE of its own — join to HEAT_PROCESS
     on HEATNO=HEAT_NO and use that table's CASTER_DATE as watermark.
     Use our own consumption mirror's latest synced_at as the floor so
     we don't miss late-arriving rows (consumption sometimes lags).
+    Uses a fresh cursor.
     """
     wm = db.execute(
         select(func.max(HCasterHeatProcessMirror.caster_date))
@@ -428,9 +439,14 @@ def pull_caster_cn(db: Session, cursor) -> dict:
         f"JOIN HTS.H_CASTER_HEAT_PROCESS p ON c.HEATNO = p.HEAT_NO "
         f"WHERE p.CASTER_DATE > :wm"
     )
-    cursor.execute(sql, wm=wm)
-    rows = cursor.fetchall()
-    cols = [d[0] for d in cursor.description]
+    cursor = conn.cursor()
+    try:
+        logger.debug(f"HTS caster_cn SQL exec: wm={wm!r}")
+        cursor.execute(sql, wm=wm)
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    finally:
+        cursor.close()
     mirror_rows = []
     skipped = 0
     for r in rows:
@@ -473,7 +489,7 @@ def row_to_breakdown_dict(row, cols):
     }
 
 
-def pull_breakdowns(db: Session, cursor) -> dict:
+def pull_breakdowns(db: Session, conn) -> dict:
     """
     Upstream H_EQUP_BREAKDOWNS occasionally has duplicate rows for the
     same (unit_code, brk_date, reason) — different EQ_CODE or duration
@@ -482,6 +498,7 @@ def pull_breakdowns(db: Session, cursor) -> dict:
     inside a single VALUES batch raises CardinalityViolation. We dedupe
     by the 3-col conflict key locally before upserting; the LAST
     occurrence wins (matches upstream's "latest snapshot" semantics).
+    Uses a fresh cursor.
     """
     wm = db.execute(
         select(func.max(HEqupBreakdownMirror.brk_date))
@@ -490,9 +507,14 @@ def pull_breakdowns(db: Session, cursor) -> dict:
         f"SELECT {_BREAKDOWN_COLS} FROM HTS.H_EQUP_BREAKDOWNS "
         f"WHERE BRK_DATE > :wm"
     )
-    cursor.execute(sql, wm=wm)
-    rows = cursor.fetchall()
-    cols = [d[0] for d in cursor.description]
+    cursor = conn.cursor()
+    try:
+        logger.debug(f"HTS breakdowns SQL exec: wm={wm!r}")
+        cursor.execute(sql, wm=wm)
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    finally:
+        cursor.close()
     mirror_rows = []
     skipped = 0
     for r in rows:
@@ -533,10 +555,14 @@ def row_to_unit_code_dict(row, cols):
     }
 
 
-def pull_unit_codes(db: Session, cursor) -> dict:
-    cursor.execute("SELECT UNIT_CODE, UNIT_DESC FROM HTS.H_UNIT_CODES")
-    rows = cursor.fetchall()
-    cols = [d[0] for d in cursor.description]
+def pull_unit_codes(db: Session, conn) -> dict:
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT UNIT_CODE, UNIT_DESC FROM HTS.H_UNIT_CODES")
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+    finally:
+        cursor.close()
     mirror_rows = [row_to_unit_code_dict(r, cols) for r in rows]
     persisted = _generic_upsert(db, HUnitCodeMirror, mirror_rows, "unit_code")
     return {"fetched": len(rows), "upserted": persisted}
@@ -573,12 +599,11 @@ def run_once() -> dict:
     out: dict = {}
     db = SessionLocal()
     try:
-        cur = conn.cursor()
         try:
             # 1) hotmetal — keep existing behaviour
             try:
                 wm = watermark_for_view(db)
-                out["hotmetal"] = pull_and_upsert(db, cur, wm)
+                out["hotmetal"] = pull_and_upsert(db, conn, wm)
                 logger.info(
                     f"HTS hotmetal OK: fetched={out['hotmetal']['fetched']} "
                     f"upserted={out['hotmetal']['upserted']} "
@@ -592,7 +617,7 @@ def run_once() -> dict:
 
             # 2) caster heat process
             try:
-                out["caster_hp"] = pull_caster_hp(db, cur)
+                out["caster_hp"] = pull_caster_hp(db, conn)
                 logger.info(
                     f"HTS caster_hp OK: fetched={out['caster_hp']['fetched']} "
                     f"upserted={out['caster_hp']['upserted']}"
@@ -604,7 +629,7 @@ def run_once() -> dict:
 
             # 3) caster consumption (depends on caster_hp watermark)
             try:
-                out["caster_cn"] = pull_caster_cn(db, cur)
+                out["caster_cn"] = pull_caster_cn(db, conn)
                 logger.info(
                     f"HTS caster_cn OK: fetched={out['caster_cn']['fetched']} "
                     f"upserted={out['caster_cn']['upserted']}"
@@ -616,7 +641,7 @@ def run_once() -> dict:
 
             # 4) breakdowns + fold into V2 Dashboard Alert feed
             try:
-                out["breakdowns"] = pull_breakdowns(db, cur)
+                out["breakdowns"] = pull_breakdowns(db, conn)
                 # Scan freshly-synced rows for the Alerts feed (Tier 1 #7).
                 # Best-effort: a scanner failure must not roll back the
                 # breakdown mirror sync — log and continue.
@@ -642,7 +667,7 @@ def run_once() -> dict:
 
             # 5) unit codes (cheap; full refresh)
             try:
-                out["unit_codes"] = pull_unit_codes(db, cur)
+                out["unit_codes"] = pull_unit_codes(db, conn)
                 logger.info(
                     f"HTS unit_codes OK: fetched={out['unit_codes']['fetched']} "
                     f"upserted={out['unit_codes']['upserted']}"
@@ -652,10 +677,9 @@ def run_once() -> dict:
                 logger.exception(f"HTS unit_codes failed: {e}")
                 out["unit_codes"] = {"error": str(e)}
         finally:
-            try:
-                cur.close()
-            except Exception:
-                pass
+            # Cursors are owned by individual pull functions now; nothing
+            # to close at the orchestrator level.
+            pass
     finally:
         db.close()
         try:
