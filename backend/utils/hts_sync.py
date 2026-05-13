@@ -90,10 +90,23 @@ def upsert_rows(db: Session, rows: list) -> int:
     changes_tracker entry #52).
 
     Filters out None values (row_to_mirror_dict returns None for invalid rows).
+
+    Dedupes by heat_no before upsert: upstream VW_HTS_HOTMETAL_DATA can
+    have multiple rows per heat (one heat fed by multiple torpedo
+    arrivals). Without dedupe, Postgres's ON CONFLICT DO UPDATE raises
+    CardinalityViolation when a single VALUES batch contains two rows
+    sharing the conflict key. Last-write-wins by stable ordering so the
+    most-recently-fetched row's data wins.
     """
     rows = [r for r in rows if r is not None]
     if not rows:
         return 0
+
+    # Dedupe by heat_no — keep last occurrence (most recent in fetch order)
+    dedup: dict = {}
+    for r in rows:
+        dedup[r["heat_no"]] = r
+    rows = list(dedup.values())
 
     update_cols = [
         c.name for c in HtsHeatMirror.__table__.columns
