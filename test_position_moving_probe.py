@@ -42,6 +42,16 @@ from backend.routes.v2_dashboard import _now_ist_naive
 EARTH_RADIUS_M = 6_371_000.0
 
 
+def _strip_tz(dt):
+    """FleetLiveLocation.last_updated is tz-aware (IST +05:30). Our
+    _now_ist_naive() anchor is tz-naive. Strip tzinfo so they compare."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
     """Great-circle distance between two (lat, lon) in meters."""
     phi1 = math.radians(lat1)
@@ -111,7 +121,8 @@ def main() -> None:
             def max_delta(window_floor):
                 max_d = 0.0
                 for older in locs[1:]:
-                    if older.last_updated < window_floor:
+                    older_ts = _strip_tz(older.last_updated)
+                    if older_ts is None or older_ts < window_floor:
                         break
                     if (older.x is None or older.y is None or
                         latest.x is None or latest.y is None):
