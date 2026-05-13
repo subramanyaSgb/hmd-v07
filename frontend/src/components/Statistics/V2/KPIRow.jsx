@@ -30,7 +30,7 @@ const KPIRow = ({ tick }) => {
                 label="HOT METAL DISPATCHED"
                 value={k ? k.hot_metal_dispatched_kt.toFixed(1) : '—'}
                 unit="kt"
-                sub="shift to date · today"
+                sub="today · 00:00 IST onward"
                 spark={k?.hot_metal_sparkline}
                 loading={loading && !k}
                 icon={<Flame size={14} />}

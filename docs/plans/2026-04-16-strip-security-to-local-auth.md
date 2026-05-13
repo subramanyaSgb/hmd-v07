@@ -92,7 +92,7 @@ app.include_router(email_verification.router)
 **Step 3: Verify app starts**
 
 ```bash
-conda activate hmd_env
+.venv\Scripts\activate.bat
 cd backend
 python -c "from main import app; print('OK')"
 ```
@@ -851,7 +851,7 @@ git commit -m "refactor: remove MFA/OAuth/email-verification state from AuthCont
 **Step 1: Start backend**
 
 ```bash
-conda activate hmd_env
+.venv\Scripts\activate.bat
 uvicorn backend.main:app --reload --port 8000
 ```
 

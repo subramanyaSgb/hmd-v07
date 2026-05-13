@@ -20,7 +20,7 @@ Before Task 1:
 cd c:/Users/DSI-LPT-081/Desktop/HMD/Development/Version_07
 git status              # → expect clean working tree on main
 git log --oneline -1    # → expect 5390fb2 docs(plans): … Sprint 2 design
-conda activate hmd_test
+.venv\Scripts\activate.bat   # DSI laptop has venv at repo root; BF4 same name, different path
 pytest backend/ -q      # → expect existing 187 tests pass before we add anything
 ```
 

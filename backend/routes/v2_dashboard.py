@@ -56,13 +56,32 @@ router = APIRouter(prefix="/api/statistics/v2", tags=["v2_dashboard"])
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-def _start_of_day_utc() -> datetime:
-    n = datetime.utcnow()
-    return n.replace(hour=0, minute=0, second=0, microsecond=0)
+# WBATNGL and HTS Oracle source tables store timestamps as IST-naive
+# wall-clock datetimes (no tzinfo, IST values). To compare with these in
+# elapsed-time / time-window calculations we need "now" in the same
+# IST-naive frame. Same pattern as backend/routes/operations.py:43-49.
+# Before 2026-05-13 the helpers below used UTC anchors; between 00:00
+# and 05:30 IST every day the "today" filter wrongly absorbed yesterday
+# (see changes_tracker.md #173).
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def _now_ist_naive() -> datetime:
+    """UTC now + 5:30 → IST wall-clock naive datetime, matching the
+    convention used by WBATNGL.OUT_DATE / HTS.TORPEDO_IN_TIME etc."""
+    return datetime.utcnow() + _IST_OFFSET
+
+
+def _start_of_day_ist() -> datetime:
+    """IST-naive midnight today. Compared against IST-naive WBATNGL
+    columns (out_date / closetime / sms_ack_time / etc.)."""
+    return _now_ist_naive().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _hours_ago(h: int) -> datetime:
-    return datetime.utcnow() - timedelta(hours=h)
+    """IST-naive 'h hours ago'. Anchored on _now_ist_naive() so the
+    rolling window aligns with WBATNGL's IST-naive timestamps."""
+    return _now_ist_naive() - timedelta(hours=h)
 
 
 def _active_torpedo_id_set(db: Session) -> set[str]:
@@ -208,9 +227,10 @@ def _fleet_breakdown(db: Session) -> dict:
 
 
 def _today_wbatngl_query(db: Session):
-    """Base query — WbatnglTripMirror rows with closetime in today (UTC)."""
+    """Base query — WbatnglTripMirror rows with closetime in today (IST).
+    Currently unused; kept for symmetry with future per-card helpers."""
     return db.query(WbatnglTripMirror).filter(
-        WbatnglTripMirror.closetime >= _start_of_day_utc(),
+        WbatnglTripMirror.closetime >= _start_of_day_ist(),
     )
 
 
@@ -227,28 +247,48 @@ def overview(
     external Oracle/MySQL and gets its own slower endpoint.
     """
     t0 = time.monotonic()
-    start_today = _start_of_day_utc()
+    start_today = _start_of_day_ist()
     yesterday = _hours_ago(24)
 
     # ── KPIs ────────────────────────────────────────────────────
-    # 1) Hot Metal Dispatched today (kt) + hourly sparkline (last 24h)
+    # 1) Hot Metal Dispatched today (kt) + hourly sparkline (last 24h).
+    #
+    # Semantic = BF-side output (Option A, user-confirmed 2026-05-13).
+    # "Dispatched" anchors on out_date (BF gate exit, see jsw.py:30-49
+    # stage map), with closetime fallback so we don't undercount rows
+    # weighed-but-not-yet-gate-stamped. Matches the anchor used in
+    # heat_trace.py:73-76 and operations.py:201.
+    dispatch_ts = func.coalesce(
+        WbatnglTripMirror.out_date,
+        WbatnglTripMirror.closetime,
+    )
+
     today_rows = db.query(
         func.sum(WbatnglTripMirror.net_weight).label("sum_net"),
     ).filter(
-        WbatnglTripMirror.closetime >= start_today,
+        dispatch_ts >= start_today,
     ).first()
     hm_dispatched_kt = float(today_rows.sum_net or 0) / 1000.0
 
+    # Sparkline: dense 24-bucket array (one entry per hour, oldest→newest).
+    # Pre-fix bug: GROUP BY hr dropped empty hours, and the left-pad
+    # collapsed the time axis whenever any hour had zero trips. Now we
+    # build an explicit hour-keyed dict and index by hour offset so the
+    # x-axis is always honest.
+    hour_bucket = func.date_trunc('hour', dispatch_ts)
     hourly_q = db.query(
-        func.date_trunc('hour', WbatnglTripMirror.closetime).label("hr"),
-        func.sum(WbatnglTripMirror.net_weight).label("net"),
+        hour_bucket.label("hr"),
+        func.coalesce(func.sum(WbatnglTripMirror.net_weight), 0).label("net"),
     ).filter(
-        WbatnglTripMirror.closetime >= yesterday,
+        dispatch_ts >= yesterday,
     ).group_by("hr").order_by("hr").all()
-    sparkline = [float(r.net or 0) for r in hourly_q]
-    # pad to 24 buckets so the spark always has consistent width
-    if len(sparkline) < 24:
-        sparkline = [0.0] * (24 - len(sparkline)) + sparkline
+
+    by_hour = {row.hr: float(row.net or 0) for row in hourly_q if row.hr is not None}
+    spark_anchor = _now_ist_naive().replace(minute=0, second=0, microsecond=0)
+    sparkline = []
+    for offset in range(23, -1, -1):                                     # 24 → 1 hours ago, then 0
+        bucket = spark_anchor - timedelta(hours=offset)
+        sparkline.append(by_hour.get(bucket, 0.0))
 
     # 2) Active trips (V07 native Trip)
     active_trips = db.query(func.count(Trip.id)).filter(
@@ -447,7 +487,7 @@ def sankey(
         WbatnglTripMirror.destination.label("dst"),
         func.count(WbatnglTripMirror.id).label("trips"),
     ).filter(
-        WbatnglTripMirror.closetime >= _start_of_day_utc(),
+        WbatnglTripMirror.closetime >= _start_of_day_ist(),
         WbatnglTripMirror.source_lab.isnot(None),
         WbatnglTripMirror.destination.isnot(None),
     ).group_by(

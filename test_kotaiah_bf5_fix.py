@@ -12,9 +12,9 @@ in .env are set up). It will:
 
 Outputs row counts, sample rows, and a clear pass/fail summary.
 
-Usage (PowerShell on SMS4 PC):
-    cd C:\\Users\\v_subramanya.gopal\\Desktop\\HMD\\Development\\Version_07
-    conda activate hmd_test
+Usage (PowerShell on BF4 PC — flat layout, no Development\\Version_07\\ subfolder):
+    cd C:\\Users\\v_subramanya.gopal\\Desktop\\HMD
+    .venv\\Scripts\\activate.bat
     python test_kotaiah_bf5_fix.py
 
 Do NOT commit this output anywhere — credentials / row data is plant-internal.
