@@ -78,16 +78,28 @@ Migration `hts002` creates the 4 new tables (HtsHeatMirror unchanged — already
 
 ## Deployment steps (on BF4 PC)
 
-1. `git pull origin main`
-2. `conda activate hmd_test`
-3. `cd Development/Version_07/backend && python -m alembic upgrade head`
-   - If `DuplicateTable: relation "h_caster_heat_process_mirror" already exists`, run `python -m alembic stamp head` first (init_db auto-creates models on startup; migrations then redundantly try too).
-4. `cd ../frontend && npm install && npm run build`
-5. Restart backend service (`app.bat` menu → restart all)
-6. Wait one 5-min HTS sync tick — verify `h_caster_heat_process_mirror` populated:
-   ```
-   psql -d hmd -c "select count(*) from h_caster_heat_process_mirror;"
-   ```
+BF4 working prompt looks like: `(.venv) C:\Users\v_subramanya.gopal\Desktop\HMD>` — Python venv, no conda. Repo root is flat (no `Development\Version_07\` subfolder on BF4).
+
+```cmd
+cd C:\Users\v_subramanya.gopal\Desktop\HMD
+git pull origin sprint-3-operations-live
+.venv\Scripts\activate.bat
+cd backend
+python -m alembic upgrade head
+:: If you see "DuplicateTable: relation ... already exists", run
+::   python -m alembic stamp head
+:: first — init_db auto-creates models on startup before migrations.
+cd ..\frontend
+npm install
+npm run build
+:: Restart backend service (app.bat menu -> restart all)
+```
+
+Then wait one 5-min HTS sync tick and verify the new mirror populated:
+
+```cmd
+psql -d hmd -c "select count(*) from h_caster_heat_process_mirror;"
+```
 
 ## Sanity checklist
 
