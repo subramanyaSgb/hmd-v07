@@ -423,42 +423,87 @@ def row_to_caster_cn_dict(row, cols):
     }
 
 
+_CASTER_CN_BACKFILL_LIMIT = 2000   # max heats to backfill per tick
+_CASTER_CN_IN_CHUNK      = 500    # Oracle IN-list chunk size (limit is 1000)
+
+
 def pull_caster_cn(db: Session, conn) -> dict:
     """
-    Consumption has no CASTER_DATE of its own — join to HEAT_PROCESS
-    on HEATNO=HEAT_NO and use that table's CASTER_DATE as watermark.
-    Use our own consumption mirror's latest synced_at as the floor so
-    we don't miss late-arriving rows (consumption sometimes lags).
-    Uses a fresh cursor.
+    Consumption sync — backfill-driven instead of date-watermarked.
+
+    Why: consumption has no date column of its own. The previous design
+    used caster_hp's MAX(caster_date) as the watermark, but in a single
+    sync tick caster_hp upserts EVERY row, which leaves caster_cn with
+    `WHERE p.CASTER_DATE > <just-upserted max>` → 0 rows. Self-locking
+    bug — discovered 2026-05-13 when the mirror stayed empty even
+    though caster_hp had 15.5K rows.
+
+    Replacement strategy:
+      1. Find heatnos in caster_hp that aren't in caster_cn yet
+         (LEFT JOIN ... WHERE caster_cn.heatno IS NULL), LIMIT 2000.
+      2. Fetch the consumption rows for exactly those heatnos via
+         `HEATNO IN (...)` (chunked to 500 to stay under Oracle's
+         1000-item IN-list limit).
+      3. Upsert.
+
+    Self-correcting: each tick chips away ~2000 rows until consumption
+    is caught up with caster_hp; afterwards every tick processes only
+    newly-arrived heats. No new column or migration required.
     """
-    wm = db.execute(
-        select(func.max(HCasterHeatProcessMirror.caster_date))
-    ).scalar() or _WATERMARK_FLOOR
-    sql = (
-        f"SELECT {_CASTER_CN_COLS} "
-        f"FROM HTS.H_CASTER_CONSUMPTION c "
-        f"JOIN HTS.H_CASTER_HEAT_PROCESS p ON c.HEATNO = p.HEAT_NO "
-        f"WHERE p.CASTER_DATE > :wm"
+    # Step 1 — find heats missing in caster_cn
+    missing = db.execute(
+        select(HCasterHeatProcessMirror.heat_no)
+        .outerjoin(
+            HCasterConsumptionMirror,
+            HCasterConsumptionMirror.heatno == HCasterHeatProcessMirror.heat_no,
+        )
+        .where(HCasterConsumptionMirror.heatno.is_(None))
+        .limit(_CASTER_CN_BACKFILL_LIMIT)
+    ).scalars().all()
+
+    if not missing:
+        return {"fetched": 0, "upserted": 0,
+                "missing_count": 0, "skipped_no_heatno": 0}
+
+    logger.info(
+        f"HTS caster_cn backfill: {len(missing)} heats missing "
+        f"(processing this tick, capped at {_CASTER_CN_BACKFILL_LIMIT})"
     )
+
+    # Step 2 — fetch consumption rows for those heats, chunked
+    all_rows = []
+    cols = None
     cursor = conn.cursor()
     try:
-        logger.info(f"HTS caster_cn SQL exec: wm={wm!r}")
-        cursor.execute(sql, wm=wm)
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
+        for i in range(0, len(missing), _CASTER_CN_IN_CHUNK):
+            chunk = missing[i:i + _CASTER_CN_IN_CHUNK]
+            placeholders = ", ".join(f":h{j}" for j in range(len(chunk)))
+            binds = {f"h{j}": h for j, h in enumerate(chunk)}
+            sql = (
+                f"SELECT {_CASTER_CN_COLS} "
+                f"FROM HTS.H_CASTER_CONSUMPTION c "
+                f"WHERE c.HEATNO IN ({placeholders})"
+            )
+            cursor.execute(sql, binds)
+            rows = cursor.fetchall()
+            if cols is None:
+                cols = [d[0] for d in cursor.description]
+            all_rows.extend(rows)
     finally:
         cursor.close()
+
+    # Step 3 — map + upsert
     mirror_rows = []
     skipped = 0
-    for r in rows:
+    for r in all_rows:
         d = row_to_caster_cn_dict(r, cols)
         if d is None:
             skipped += 1
             continue
         mirror_rows.append(d)
     persisted = _generic_upsert(db, HCasterConsumptionMirror, mirror_rows, "heatno")
-    return {"fetched": len(rows), "upserted": persisted,
-            "skipped_no_heatno": skipped, "watermark": wm}
+    return {"fetched": len(all_rows), "upserted": persisted,
+            "missing_count": len(missing), "skipped_no_heatno": skipped}
 
 
 # ------------------------------------------------------------
