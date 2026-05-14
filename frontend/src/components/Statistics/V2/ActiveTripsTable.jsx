@@ -75,14 +75,22 @@ const STAGE_LABEL = {
     AT_SMS:     'At SMS',
 };
 
-/** Format an ISO timestamp as "HH:MM" in browser TZ. */
-const fmtTime = (iso) => {
+/**
+ * Format an ISO timestamp as "DD MMM HH:MM" (e.g. "10 May 03:13") in
+ * browser TZ. Showing the date alongside HH:MM is essential for the
+ * Active Trips table because a stuck trip may be days old — a bare
+ * HH:MM hides that.
+ */
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDateTime = (iso) => {
     if (!iso) return '—';
     try {
         const d = new Date(iso);
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mm = String(d.getMinutes()).padStart(2, '0');
-        return `${hh}:${mm}`;
+        const day = String(d.getDate()).padStart(2, '0');
+        const mon = MONTH_SHORT[d.getMonth()];
+        const hh  = String(d.getHours()).padStart(2, '0');
+        const mm  = String(d.getMinutes()).padStart(2, '0');
+        return `${day} ${mon} ${hh}:${mm}`;
     } catch { return '—'; }
 };
 
@@ -282,8 +290,8 @@ const ActiveTripsTable = ({ tick }) => {
                         <tbody>
                             {trips.map(t => (
                                 <tr key={t.trip_id}>
-                                    <td className="v2-mono">{fmtTime(t.created_at)}</td>
-                                    <td className="v2-mono">{fmtTime(t.dispatched_at)}</td>
+                                    <td className="v2-mono">{fmtDateTime(t.created_at)}</td>
+                                    <td className="v2-mono">{fmtDateTime(t.dispatched_at)}</td>
                                     <td><strong>{t.ladle || '—'}</strong></td>
                                     <td className="v2-mono v2-dim">{t.trip_id || '—'}</td>
                                     <td>{t.source || '—'}</td>

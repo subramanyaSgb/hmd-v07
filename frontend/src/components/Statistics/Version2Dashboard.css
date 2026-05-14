@@ -477,7 +477,9 @@
 }
 
 /* Card header with inline filter/search controls — controls right-anchored
-   beside the title via margin-left:auto. Wraps on narrow screens. */
+   beside the title via margin-left:auto. The CONTROLS GROUP stays on one
+   line (no internal wrap); on narrow screens the whole group drops below
+   the title via the parent's flex-wrap. */
 .v2-card-h--with-controls { flex-wrap: wrap; row-gap: 8px; }
 
 .v2-active-controls {
@@ -485,12 +487,13 @@
     gap: 8px;
     align-items: center;
     margin-left: auto;        /* push to right end of the header row */
-    flex-wrap: wrap;
+    flex-wrap: nowrap;        /* keep all 4 controls on a single line */
+    white-space: nowrap;
 }
 .v2-active-search {
     position: relative;
-    flex: 0 1 240px;
-    min-width: 180px;
+    flex: 0 0 200px;          /* fixed-ish width, doesn't grow/shrink */
+    min-width: 160px;
 }
 .v2-active-search-icon {
     position: absolute;
@@ -518,14 +521,16 @@
 }
 .v2-active-select {
     height: 30px;
-    padding: 0 8px;
+    padding: 0 6px;
     border-radius: 6px;
     border: 1px solid var(--v2-line);
     background: var(--v2-page);
     color: var(--v2-text);
-    font-size: 12.5px;
+    font-size: 12px;
     cursor: pointer;
     transition: border-color 0.15s ease;
+    min-width: 110px;
+    max-width: 150px;
 }
 .v2-active-select:hover { border-color: var(--v2-text-dim); }
 .v2-active-select:focus { outline: none; border-color: var(--v2-accent); }
