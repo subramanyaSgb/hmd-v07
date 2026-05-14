@@ -189,10 +189,15 @@ def upsert_locations(db: Session, rows: List[Dict]) -> Dict[str, int]:
                 type="torpedo",
                 capacity=360.0,             # default until WBATNGL-derived
                 status=mapped_status,
+                suveechi_status=suveechi_status,    # #190: raw, unmapped
             )
             db.add(fleet)
             stats["fleet_created"] += 1
         else:
+            # #190: ALWAYS mirror the raw SuVeechi status — never overridden,
+            # never mapped. This is what the Fleet Donut reads.
+            if fleet.suveechi_status != suveechi_status:
+                fleet.suveechi_status = suveechi_status
             # Don't override Maintenance/Assigned set manually unless suveechi says Ign Off
             if fleet.status not in ("Maintenance", "Assigned") or suveechi_status == "Ign Off":
                 if fleet.status != mapped_status:

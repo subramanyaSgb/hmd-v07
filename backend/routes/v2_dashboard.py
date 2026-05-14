@@ -111,56 +111,40 @@ def _shift_from_hour(hour: int, shifts: list[ShiftConfig]) -> Optional[str]:
 
 def _fleet_breakdown(db: Session) -> dict:
     """
-    3-bucket donut classifier — MAINTENANCE / ACTIVE / IDLE. First match wins:
+    Fleet Donut data — 2026-05-14 (#190) rewrite.
 
-      1. FleetManagement.status == "Maintenance"        →  MAINTENANCE
-      2. has-in-flight-trip OR status == "Moving"       →  ACTIVE
-      3. else                                           →  IDLE
-
-    `has-in-flight-trip` = WbatnglTripMirror row exists for this torpedo
-    where out_date IS NOT NULL, sms_ack_time IS NULL, out_date >=
-    now_ist - ACTIVE_TRIP_WINDOW_HOURS. Same definition as Card 2 KPI —
-    single source of truth for "in flight".
-
-    History (changes_tracker #182):
-      - Pre-fix this returned 7 buckets (Loading / In Transit / At SMS /
-        Returning / Idle / Hot Repair / Ign Off). 3 were always 0 because
-        the trip-stage classifier read V07's empty Trip table.
-      - Hot Repair bucket required MaintenanceSchedule rows, but probe
-        (test_fleet_donut_probe.py) confirmed the table is empty on BF4.
-      - V07 Trip + MaintenanceSchedule lookups dropped entirely.
-      - IST timezone bug at the old `today = datetime.utcnow().date()`
-        line is now moot — no date comparison left.
+    PURE READ of raw SuVeechi status. No calculation, no mapping, no
+    in-flight-trip lookup, no manual-override merging. Whatever values
+    SuVeechi's `vw_unit_status_ist.status` returns (currently
+    Idle / Moving / Ign Off) are grouped verbatim and counted.
 
     Returns:
-      {"total": 53, "breakdown": {"MAINTENANCE": 4, "ACTIVE": 6, "IDLE": 43}}
-    """
-    in_flight_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
-    in_flight_rows = db.query(WbatnglTripMirror.fleet_id).filter(
-        WbatnglTripMirror.out_date.isnot(None),
-        WbatnglTripMirror.sms_ack_time.is_(None),
-        WbatnglTripMirror.out_date >= in_flight_floor,
-        WbatnglTripMirror.fleet_id.isnot(None),
-    ).distinct().all()
-    in_flight_set = {r[0] for r in in_flight_rows}
+      {"total": 53, "breakdown": {"Idle": 43, "Moving": 6, "Ign Off": 4}}
 
+    Edge cases:
+      - NULL or empty suveechi_status (sync hasn't run yet, or torpedo
+        was inserted from a different code path) bucketed as "Unknown".
+      - New statuses upstream automatically appear as new buckets — no
+        backend or frontend changes required.
+
+    History:
+      - #182 (pre-#190): 3-bucket classifier MAINTENANCE/ACTIVE/IDLE built
+        from FleetManagement.status (mapped) + in-flight WBATNGL trip
+        lookup. Caused divergence with Card 2 KPI count (32 trips vs 3
+        active torpedoes) because the rules used different logic.
+      - #190: dropped the calculation entirely. Donut now shows raw
+        operational state; Card 2 KPI shows trip-record count. The two
+        are intentionally different views and no longer pretend to share
+        a definition.
+    """
     fleets = db.query(FleetManagement).filter(
         FleetManagement.deleted_at.is_(None),
     ).all()
 
-    buckets = {"MAINTENANCE": 0, "ACTIVE": 0, "IDLE": 0}
+    buckets: dict[str, int] = {}
     for f in fleets:
-        status = (f.status or "").strip()
-        if status == "Maintenance":
-            # Wins even if a stale in-flight trip exists (see TLC-36 case
-            # 2026-05-13 — torpedo went to maintenance mid-trip and the
-            # trip was never acked; data-hygiene anomaly to investigate
-            # separately, but the bucket assignment is correct).
-            buckets["MAINTENANCE"] += 1
-        elif f.fleet_id in in_flight_set or status == "Moving":
-            buckets["ACTIVE"] += 1
-        else:
-            buckets["IDLE"] += 1
+        key = (f.suveechi_status or "").strip() or "Unknown"
+        buckets[key] = buckets.get(key, 0) + 1
 
     return {"total": len(fleets), "breakdown": buckets}
 

@@ -216,8 +216,16 @@ class FleetManagement(SoftDeleteMixin, Base):
 
     id = Column(Integer, primary_key=True, index=True)
     fleet_id = Column(String, unique=True, index=True)
-    type = Column(String)                
-    status = Column(String, default="Operating")                          
+    type = Column(String)
+    status = Column(String, default="Operating")
+    # 2026-05-14 (#190): raw SuVeechi `vw_unit_status_ist.status` value
+    # mirrored unchanged (Idle / Moving / Ign Off, currently). Distinct
+    # from `status` above which is the mapped/manual value (Idle→Operating,
+    # Moving→Moving, Ign Off→Maintenance, plus operator overrides).
+    # `suveechi_status` is the untranslated read from source — used by
+    # the Fleet Donut so the donut shows raw operational state, not our
+    # derived buckets. No code path overrides this value.
+    suveechi_status = Column(String(20), nullable=True)
     capacity = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
