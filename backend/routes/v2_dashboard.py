@@ -458,10 +458,16 @@ STAGE_AT_SMS      = "AT_SMS"        # HTS torpedo_in_time set, torpedo_out_time 
 
 def _derive_stage(trip_row: dict) -> str:
     """Compute the active-trip stage from data shape. Order matters —
-    most-progressed stage wins."""
+    most-progressed stage wins.
+
+    2026-05-14 (#189): IN_TRANSIT detection now uses closetime as a
+    fallback for out_date. Probe-confirmed (3309 trips / 30d): when both
+    fields are set, median gap is 0 min — they fire at the same source
+    event. ~10% of trips never get out_date written; those are still
+    really in transit if closetime is set."""
     if trip_row.get("torpedo_in_time"):
         return STAGE_AT_SMS
-    if trip_row.get("out_date"):
+    if trip_row.get("out_date") or trip_row.get("closetime"):
         return STAGE_IN_TRANSIT
     if trip_row.get("gross_weight"):
         return STAGE_WB_LOADED
@@ -481,15 +487,19 @@ def _active_trips_base_sql() -> str:
     """
     return """
     WITH closed_by_hts AS (
-        -- Rule 1: HTS recorded torpedo_out_time within 6h of BF exit
+        -- Rule 1 (2026-05-14 #189): HTS recorded torpedo_out_time within
+        -- 6h of BF "dispatched" timestamp. Uses COALESCE(out_date, closetime)
+        -- because ~10% of trips never get out_date written even though the
+        -- WB transaction did close — probe-confirmed both columns share
+        -- the same source event when present (median gap 0 min).
         SELECT DISTINCT w.id
         FROM wbatngl_trip_mirror w
         INNER JOIN hts_heat_mirror h
             ON h.torpedo_no = w.fleet_id
-           AND h.torpedo_in_time >= w.out_date
-           AND h.torpedo_in_time <= w.out_date + INTERVAL '6 hours'
+           AND h.torpedo_in_time >= COALESCE(w.out_date, w.closetime)
+           AND h.torpedo_in_time <= COALESCE(w.out_date, w.closetime) + INTERVAL '6 hours'
            AND h.torpedo_out_time IS NOT NULL
-        WHERE w.out_date IS NOT NULL
+        WHERE COALESCE(w.out_date, w.closetime) IS NOT NULL
     ),
     closed_by_next_trip AS (
         -- Rule 2: same torpedo started another trip > 60min later
@@ -501,12 +511,21 @@ def _active_trips_base_sql() -> str:
                                     + INTERVAL '60 minutes'
     ),
     stale_trips AS (
-        -- Rule 3: dispatched > 24h ago and not closed by Rules 1 or 2
+        -- Rule 3 (2026-05-14 #189): unified 24h stale cap using
+        -- COALESCE(out_date, closetime, first_tare_time). One single
+        -- formula handles all 3 dispatched-state combinations:
+        --   (a) out_date set         -> use out_date for staleness
+        --   (b) only closetime set   -> use closetime
+        --   (c) neither set          -> use first_tare_time (Rule 3b)
+        -- Probe-confirmed: closes 4 stuck-at-WB-no-close trips and
+        -- 3 dispatched-no-out-date trips that would have hung forever
+        -- under the old Rule 3 (which required out_date).
         SELECT id
         FROM wbatngl_trip_mirror
-        WHERE out_date IS NOT NULL
-          AND out_date < (NOW() AT TIME ZONE 'Asia/Kolkata')::timestamp
-                         - INTERVAL '24 hours'
+        WHERE first_tare_time IS NOT NULL
+          AND COALESCE(out_date, closetime, first_tare_time)
+              < (NOW() AT TIME ZONE 'Asia/Kolkata')::timestamp
+                - INTERVAL '24 hours'
     )
     SELECT
         w.id,
@@ -531,12 +550,15 @@ def _active_trips_base_sql() -> str:
         fp.last_updated       AS gps_last_updated
     FROM wbatngl_trip_mirror w
     LEFT JOIN LATERAL (
+        -- 2026-05-14 #189: anchor on COALESCE(out_date, closetime) so
+        -- trips that have closetime but no out_date can still match
+        -- their HTS heat.
         SELECT *
         FROM hts_heat_mirror h2
         WHERE h2.torpedo_no = w.fleet_id
-          AND w.out_date IS NOT NULL
-          AND h2.torpedo_in_time >= w.out_date
-          AND h2.torpedo_in_time <= w.out_date + INTERVAL '6 hours'
+          AND COALESCE(w.out_date, w.closetime) IS NOT NULL
+          AND h2.torpedo_in_time >= COALESCE(w.out_date, w.closetime)
+          AND h2.torpedo_in_time <= COALESCE(w.out_date, w.closetime) + INTERVAL '6 hours'
         ORDER BY h2.torpedo_in_time ASC
         LIMIT 1
     ) h ON true
