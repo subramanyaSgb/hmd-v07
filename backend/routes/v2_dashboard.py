@@ -213,6 +213,47 @@ def overview(
         bucket = spark_anchor - timedelta(hours=offset)
         sparkline.append(by_hour.get(bucket, 0.0))
 
+    # 1b) Per-producer breakdown of today's dispatched tonnes (#191).
+    # Uses the SAME `dispatch_ts >= start_today` filter as the hot-metal
+    # KPI above so the sum across producers always equals the KPI value —
+    # no off-by-one between "Card 1 says 5.9 kt" and the producer strip.
+    # Returns all 7 known producers (BF1..BF5 + COREX1/2), even those with
+    # zero trips today, so the UI can always render 7 slots and operators
+    # see at a glance which producer is silent.
+    KNOWN_PRODUCERS = ["BF1", "BF2", "BF3", "BF4", "BF5", "COREX1", "COREX2"]
+    producer_rows = db.query(
+        WbatnglTripMirror.source_lab,
+        func.count(WbatnglTripMirror.id).label("trips"),
+        func.sum(WbatnglTripMirror.net_weight).label("tonnes"),
+        func.max(dispatch_ts).label("last_dispatch"),
+    ).filter(
+        dispatch_ts >= start_today,
+        WbatnglTripMirror.source_lab.isnot(None),
+    ).group_by(WbatnglTripMirror.source_lab).all()
+    producer_data = {
+        (r.source_lab or "").upper(): {
+            "trips": int(r.trips or 0),
+            "tonnes": float(r.tonnes or 0),
+            "last_dispatch": r.last_dispatch,
+        }
+        for r in producer_rows
+    }
+    total_kt_for_pct = float(today_rows.sum_net or 0) / 1000.0
+    one_hour_ago_ist = _hours_ago(1)
+    producer_breakdown = []
+    for src in KNOWN_PRODUCERS:                                          # alphabetical-by-design
+        d = producer_data.get(src, {"trips": 0, "tonnes": 0.0, "last_dispatch": None})
+        kt = d["tonnes"] / 1000.0
+        producer_breakdown.append({
+            "source":          src,
+            "trips":           d["trips"],
+            "tonnes":          round(d["tonnes"], 1),
+            "kt":              round(kt, 2),
+            "pct_of_total":    round(100 * kt / total_kt_for_pct, 1) if total_kt_for_pct > 0 else 0.0,
+            "last_dispatch_at": d["last_dispatch"].isoformat() if d["last_dispatch"] else None,
+            "active_last_hour": bool(d["last_dispatch"] and d["last_dispatch"] >= one_hour_ago_ist),
+        })
+
     # 2) Active trips — in-flight definition (Option A, user-confirmed
     # 2026-05-13): WBATNGL trip departed BF (out_date set), not yet
     # acknowledged at SMS (sms_ack_time null), within the last
@@ -352,6 +393,7 @@ def overview(
         "fleet":  fleet_payload,
         "shifts": shift_payload,
         "current_shift": current_shift,
+        "producer_breakdown": producer_breakdown,    # #191: per-BF/COREX
         "generated_at":  datetime.utcnow().isoformat() + "Z",
         "elapsed_ms":    elapsed_ms,
     }

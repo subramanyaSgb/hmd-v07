@@ -54,6 +54,10 @@
 /* Full-width variant: Alerts panel removed 2026-05-14, Active Trips spans
    the entire row (changes_tracker #186). */
 .v2-row-trips-full { grid-template-columns: 1fr; }
+
+/* Producer Breakdown strip row (#191) — single-column row that hosts a
+   7-cell horizontal strip rendered by ProducerBreakdown.jsx. */
+.v2-row-producer { grid-template-columns: 1fr; }
 .v2-row-bottom  { grid-template-columns: 1.4fr 1fr 1fr; }
 
 @media (max-width: 1280px) {
@@ -665,4 +669,116 @@
     .v2-active-table { min-width: 0; font-size: 12px; }
     .v2-active-table tbody td { padding: 8px 6px; }
     .v2-active-table thead th { padding: 7px 6px; font-size: 10px; }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Producer Breakdown strip (#191) — horizontal 7-cell row sitting
+   between the 4 KPI cards and the Donut+Throughput row.
+   ─────────────────────────────────────────────────────────────── */
+.v2-producer-strip {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+}
+.v2-producer-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 12px 10px;
+    border-radius: 10px;
+    background: var(--v2-page);
+    border: 1px solid var(--v2-line-soft);
+    transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+.v2-producer-card:hover {
+    border-color: var(--v2-line);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px hsl(220 30% 20% / 0.06);
+}
+
+/* Header row: icon + name + (optional) live dot */
+.v2-producer-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: var(--v2-text-dim);
+    text-transform: uppercase;
+}
+.v2-producer-icon { color: var(--v2-text-dim); flex-shrink: 0; }
+.v2-producer-name { flex: 1; min-width: 0; }
+.v2-producer-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: hsl(140 60% 42%);
+    box-shadow: 0 0 0 3px hsl(140 60% 42% / 0.18);
+    flex-shrink: 0;
+    animation: v2-producer-pulse 2.2s ease-in-out infinite;
+}
+@keyframes v2-producer-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px hsl(140 60% 42% / 0.18); }
+    50%      { box-shadow: 0 0 0 5px hsl(140 60% 42% / 0.06); }
+}
+
+/* Big tonnage number */
+.v2-producer-value {
+    font-family: 'Space Grotesk', 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--v2-text);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-top: 2px;
+}
+.v2-producer-sub {
+    font-size: 11px;
+    color: var(--v2-text-dim);
+    line-height: 1;
+}
+
+/* Tiny % bar */
+.v2-producer-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: hsl(214 32% 91%);
+    overflow: hidden;
+    margin-top: 4px;
+}
+.v2-producer-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, hsl(214 80% 55%), hsl(214 80% 65%));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+/* Zero-trip producer — dimmed but still visible */
+.v2-producer-card--zero {
+    opacity: 0.55;
+    background: hsl(214 14% 96%);
+}
+.v2-producer-card--zero .v2-producer-value {
+    color: var(--v2-text-dim);
+    font-weight: 600;
+}
+.v2-producer-card--zero .v2-producer-head {
+    color: hsl(214 14% 60%);
+}
+
+/* Live (recent dispatch) — subtle green accent border */
+.v2-producer-card--live {
+    border-color: hsl(140 60% 80%);
+}
+
+/* Responsive: stack to 4 then 2 columns on narrower screens */
+@media (max-width: 1280px) {
+    .v2-producer-strip { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 800px) {
+    .v2-producer-strip { grid-template-columns: repeat(2, 1fr); }
+    .v2-producer-value { font-size: 15px; }
 }

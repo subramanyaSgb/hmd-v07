@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../../utils/api';
 import KPIRow from './V2/KPIRow';
+import ProducerBreakdown from './V2/ProducerBreakdown';
 import FleetDonut from './V2/FleetDonut';
 import ThroughputChart from './V2/ThroughputChart';
 import ActiveTripsTable from './V2/ActiveTripsTable';
@@ -47,6 +48,10 @@ const Version2Dashboard = () => {
         <div className="v2-dashboard">
             <div className="v2-row v2-row-kpis">
                 <KPIRow tick={tick} />
+            </div>
+
+            <div className="v2-row v2-row-producer">
+                <ProducerBreakdown tick={tick} />
             </div>
 
             <div className="v2-row v2-row-middle">
