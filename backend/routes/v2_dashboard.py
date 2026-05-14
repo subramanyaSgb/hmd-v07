@@ -407,44 +407,129 @@ def _is_hour_in(h: int, start: int, end: int) -> bool:
 
 # ── /throughput ──────────────────────────────────────────────────
 
+# Producers we'll always render in the stacked area — alphabetical so
+# the stack order is stable and matches the Producer Breakdown strip.
+_THROUGHPUT_PRODUCERS = ["BF1", "BF2", "BF3", "BF4", "BF5", "COREX1", "COREX2"]
+
+
 @router.get("/throughput")
 def throughput(
-    range: str = Query("24h", regex="^(24h|7d|30d)$"),
+    range: str = Query("today", regex="^(today|7d|30d)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_required),
 ):
     """
-    Hot Metal Throughput area chart. Grouped by hour for 24h, by day for
-    7d/30d. Returns a flat list of {label, value} so the frontend just
-    plots it.
-    """
-    now = datetime.utcnow()
-    if range == "24h":
-        cutoff = now - timedelta(hours=24)
-        bucket = func.date_trunc('hour', WbatnglTripMirror.closetime)
-        fmt = "%H:%M"
-    elif range == "7d":
-        cutoff = now - timedelta(days=7)
-        bucket = func.date_trunc('day', WbatnglTripMirror.closetime)
-        fmt = "%d %b"
-    else:                                                                # 30d
-        cutoff = now - timedelta(days=30)
-        bucket = func.date_trunc('day', WbatnglTripMirror.closetime)
-        fmt = "%d %b"
+    Hot Metal Throughput — stacked area chart by producer.
 
+    2026-05-14 (#192) full rewrite. Key changes vs. the prior version:
+
+      (1) Anchor: COALESCE(out_date, closetime) — consistent with Card 1
+          and Producer Breakdown. The prior `closetime`-only filter
+          missed ~42% of tonnage (probe-confirmed: 281k tonnes / 30d).
+
+      (2) Window: calendar-aligned (Today / 7d / 30d) using IST-naive
+          helpers. Was: 24h rolling using `datetime.utcnow()` which
+          mismatched the IST-naive timestamps in WBATNGL.
+
+      (3) Dense bucket fill in Python — generate every hour or day in
+          the window, fill 0 for missing. Prior version dropped empty
+          buckets via SQL GROUP BY, so the area chart "lied" by
+          smoothing across zero-production gaps. Same fix Card 1
+          sparkline got in #173.
+
+      (4) Per-producer split per bucket so the frontend can render
+          stacked area (one band per BF/COREX). Each bucket dict has
+          7 producer keys (alphabetical order) + a `total` field.
+
+      (5) Unit auto-switch: tonnes for hourly (Today), kt for daily
+          (7d / 30d). Probe-confirmed: hourly values 0-1100 t fit
+          tonnes; daily 6k-39k t reads cleaner as 6.0-39.0 kt.
+
+    Response shape:
+      {
+        "range":   "today" | "7d" | "30d",
+        "unit":    "tonnes" | "kt",
+        "buckets": [
+          {"label": "00:00", "total": 540.0,
+           "BF1": 100, "BF2": 80, "BF3": 0, "BF4": 200,
+           "BF5": 160, "COREX1": 0, "COREX2": 0},
+          ...
+        ]
+      }
+    """
+    dispatch_ts = func.coalesce(
+        WbatnglTripMirror.out_date,
+        WbatnglTripMirror.closetime,
+    )
+
+    # Build the window + bucket list + format
+    now_ist  = _now_ist_naive()
+    today_00 = _start_of_day_ist()
+
+    if range == "today":
+        start = today_00
+        # Inclusive of the current hour; chart extends from 00:00 to now's hour.
+        end_anchor = now_ist.replace(minute=0, second=0, microsecond=0)
+        bucket_dt_list = []
+        h = start
+        while h <= end_anchor:
+            bucket_dt_list.append(h)
+            h = h + timedelta(hours=1)
+        bucket_sql = func.date_trunc('hour', dispatch_ts)
+        label_fmt = "%H:00"
+        unit = "tonnes"
+    elif range == "7d":
+        start = today_00 - timedelta(days=6)         # 7 days inclusive of today
+        bucket_dt_list = [start + timedelta(days=i) for i in range(7)]
+        bucket_sql = func.date_trunc('day', dispatch_ts)
+        label_fmt = "%d %b"
+        unit = "kt"
+    else:                                            # 30d
+        start = today_00 - timedelta(days=29)        # 30 days inclusive of today
+        bucket_dt_list = [start + timedelta(days=i) for i in range(30)]
+        bucket_sql = func.date_trunc('day', dispatch_ts)
+        label_fmt = "%d %b"
+        unit = "kt"
+
+    # Query per-producer per-bucket
     rows = db.query(
-        bucket.label("bucket"),
+        bucket_sql.label("bucket"),
+        func.upper(WbatnglTripMirror.source_lab).label("producer"),
         func.coalesce(func.sum(WbatnglTripMirror.net_weight), 0).label("net"),
     ).filter(
-        WbatnglTripMirror.closetime >= cutoff,
-    ).group_by("bucket").order_by("bucket").all()
+        dispatch_ts >= start,
+        WbatnglTripMirror.source_lab.isnot(None),
+    ).group_by("bucket", "producer").order_by("bucket").all()
+
+    # Index: data[bucket_dt][producer] = tonnes
+    data: dict[datetime, dict[str, float]] = {
+        b: {p: 0.0 for p in _THROUGHPUT_PRODUCERS} for b in bucket_dt_list
+    }
+    for r in rows:
+        if r.bucket in data:
+            p = (r.producer or "").upper()
+            if p in _THROUGHPUT_PRODUCERS:
+                data[r.bucket][p] = float(r.net or 0)
+
+    # Assemble flat buckets list shaped for Recharts stacked area
+    buckets = []
+    for b in bucket_dt_list:
+        per_producer = data[b]
+        total = sum(per_producer.values())
+        if unit == "kt":
+            bucket_row = {p: round(v / 1000.0, 2) for p, v in per_producer.items()}
+            bucket_row["total"] = round(total / 1000.0, 2)
+        else:
+            bucket_row = {p: round(v, 1) for p, v in per_producer.items()}
+            bucket_row["total"] = round(total, 1)
+        bucket_row["label"] = b.strftime(label_fmt)
+        buckets.append(bucket_row)
 
     return {
-        "range": range,
-        "points": [
-            {"label": r.bucket.strftime(fmt), "value": round(float(r.net or 0), 1)}
-            for r in rows
-        ],
+        "range":   range,
+        "unit":    unit,
+        "producers": _THROUGHPUT_PRODUCERS,         # frontend stack order
+        "buckets": buckets,
     }
 
 

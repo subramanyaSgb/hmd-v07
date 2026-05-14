@@ -782,3 +782,67 @@
     .v2-producer-strip { grid-template-columns: repeat(2, 1fr); }
     .v2-producer-value { font-size: 15px; }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   Throughput chart custom tooltip (#192) — shows per-producer
+   stacked-bucket breakdown sorted by value desc + total row.
+   ─────────────────────────────────────────────────────────────── */
+.v2-throughput-tooltip {
+    background: var(--v2-page);
+    border: 1px solid var(--v2-line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: var(--v2-text);
+    min-width: 160px;
+    box-shadow: 0 4px 10px hsl(220 30% 20% / 0.08);
+}
+.v2-throughput-tooltip-h {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--v2-text);
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--v2-line-soft);
+}
+.v2-throughput-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+.v2-throughput-tooltip-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.v2-throughput-tooltip-name {
+    flex: 1;
+    color: var(--v2-text-dim);
+    font-size: 11px;
+}
+.v2-throughput-tooltip-val {
+    font-family: 'Space Grotesk', 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--v2-text);
+}
+.v2-throughput-tooltip-empty {
+    font-style: italic;
+    color: var(--v2-text-dim);
+    padding: 4px 0;
+}
+.v2-throughput-tooltip-total {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 0;
+    margin-top: 4px;
+    border-top: 1px solid var(--v2-line-soft);
+}
+.v2-throughput-tooltip-total .v2-throughput-tooltip-name {
+    color: var(--v2-text);
+    font-weight: 600;
+}
