@@ -1,0 +1,3397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HMD ↔ JSW Data Gap Analysis</title>
+  <style>
+@page {
+  size: A4;
+  margin: 20mm 16mm 18mm 16mm;
+  @bottom-right {
+    content: counter(page);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Georgia', 'Cambria', 'Times New Roman', serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1f2937;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Sans-serif for headings, code, tables, and metadata ── */
+h1, h2, h3, h4, h5, h6,
+table, th, td,
+.metadata,
+code, pre, kbd, samp {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont,
+               'Helvetica Neue', Arial, sans-serif;
+}
+code, pre, kbd, samp {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+}
+
+/* ── Headings ── */
+h1 {
+  font-size: 20pt;
+  margin: 0 0 6pt;
+  color: #0f172a;
+  border-bottom: 1.5pt solid #1e3a8a;
+  padding-bottom: 4pt;
+  page-break-after: avoid;
+  font-weight: 600;
+}
+h2 {
+  font-size: 14pt;
+  margin: 22pt 0 6pt;
+  color: #1e3a8a;
+  border-bottom: 0.5pt solid #cbd5e1;
+  padding-bottom: 3pt;
+  page-break-after: avoid;
+  font-weight: 600;
+}
+h3 {
+  font-size: 12pt;
+  margin: 16pt 0 6pt;
+  color: #1f2937;
+  page-break-after: avoid;
+  font-weight: 600;
+}
+h4 {
+  font-size: 11pt;
+  margin: 12pt 0 4pt;
+  color: #1f2937;
+  page-break-after: avoid;
+  font-weight: 600;
+}
+h5 {
+  font-size: 10pt;
+  margin: 8pt 0 3pt;
+  color: #4b5563;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+p { margin: 5pt 0; text-align: justify; }
+ul, ol { margin: 5pt 0; padding-left: 20pt; }
+li { margin: 2pt 0; }
+
+/* ── Blockquote — used for purpose / abstract ── */
+blockquote {
+  border-left: 2pt solid #1e3a8a;
+  margin: 10pt 0;
+  padding: 6pt 14pt;
+  background: #f8fafc;
+  color: #1e3a8a;
+  font-style: italic;
+  font-size: 10pt;
+}
+blockquote p { margin: 3pt 0; }
+
+/* ── Tables — clean, banded, no garish color ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8pt 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 0.5pt solid #cbd5e1;
+  padding: 5pt 8pt;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: #1e3a8a;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 9pt;
+  letter-spacing: 0.02em;
+}
+tr:nth-child(even) td { background: #f8fafc; }
+
+/* ── Code ── */
+code {
+  font-size: 9pt;
+  background: #f1f5f9;
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+  color: #be185d;
+  border: 0.25pt solid #e2e8f0;
+}
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 9pt 12pt;
+  border-radius: 3pt;
+  overflow: auto;
+  font-size: 9pt;
+  line-height: 1.45;
+  page-break-inside: avoid;
+  margin: 8pt 0;
+}
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  border: none;
+}
+
+/* ── Horizontal rules ── */
+hr {
+  border: none;
+  border-top: 0.5pt solid #cbd5e1;
+  margin: 16pt 0;
+}
+
+strong { font-weight: 700; color: #0f172a; }
+em { color: #1f2937; }
+
+/* ── Metadata header block ── */
+.metadata {
+  margin: 6pt 0 16pt;
+  padding: 10pt 14pt;
+  background: #f8fafc;
+  border: 0.5pt solid #cbd5e1;
+  border-left: 3pt solid #1e3a8a;
+  font-size: 9pt;
+}
+.meta-row {
+  display: flex;
+  gap: 10pt;
+  padding: 2pt 0;
+}
+.meta-key {
+  display: inline-block;
+  width: 80pt;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  font-size: 8pt;
+  letter-spacing: 0.08em;
+}
+.meta-val { color: #1f2937; flex: 1; }
+
+/* ── Section identifiers / module headers — restrained ── */
+h4 + table {
+  margin-top: 4pt;
+}
+
+/* ── Print niceties ── */
+@media print {
+  h2, h3, h4 { page-break-after: avoid; }
+  table { page-break-inside: avoid; }
+  pre   { page-break-inside: avoid; }
+  blockquote { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="metadata">
+  <div class="meta-row"><span class="meta-key">Date</span><span class="meta-val">2026-05-14</span></div>
+  <div class="meta-row"><span class="meta-key">Version</span><span class="meta-val">1.0 (Draft for JSW review)</span></div>
+  <div class="meta-row"><span class="meta-key">Status</span><span class="meta-val">Complete first draft — ready for JSW review</span></div>
+  <div class="meta-row"><span class="meta-key">Audience</span><span class="meta-val">JSW IT • JSW Operations • JSW Planning • Deevia internal</span></div>
+  <div class="meta-row"><span class="meta-key">Owner</span><span class="meta-val">Deevia Software India Pvt Ltd</span></div>
+</div>
+<h1 id="hmd-jsw-data-gap-analysis">HMD ↔ JSW Data Gap Analysis</h1>
+<blockquote>
+<p>This document inventories the data requirements of the Hot Metal Distribution (HMD) system being delivered for JSW Vijayanagar, contrasts those requirements with the data presently available across the four source systems Deevia has been granted access to, and identifies every gap — missing, inconsistent, or fragmented — that prevents the HMD system from operating on reliable, deterministic data.</p>
+<p>The objective is precise enumeration so that JSW Operations, JSW IT, and JSW Planning can close each gap at source. A reliable HMD system requires reliable source data. Items are scored by severity and routed by owner so the response can be planned and tracked.</p>
+<p>Every gap below is grounded in direct schema inspection or in concrete query evidence executed against JSW databases on 13–14 May 2026. Where a number is cited, the SQL that produced it appears in the Technical Detail block of that gap.</p>
+</blockquote>
+<hr>
+<h2 id="1-executive-summary">1. Executive Summary</h2>
+<p>The Hot Metal Distribution (HMD) system being delivered for JSW Vijayanagar consumes data from four source systems (WBATNGL Oracle, HTS Oracle, SuVeechi MySQL, and HMD's internal PostgreSQL mirror). Inspection of these sources on 13–14 May 2026 identified <strong>30 individual data gaps across 13 operational modules</strong>. Of these, <strong>7 are BLOCKERS</strong> — they prevent specific HMD modules from being delivered at all — while the remainder reduce coverage, reliability, or precision.</p>
+<h3 id="11-module-status-overview">1.1 Module status overview</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Module</th>
+<th>Status</th>
+<th style="text-align: right;">Gap count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Producer-side data (BF1–BF5, COREX1, COREX2)</td>
+<td>Functional with reliability gaps</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td>2</td>
+<td>BF-side equipment downtime</td>
+<td>Blocked</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Production planning and targets</td>
+<td>Blocked</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Trip lifecycle tracking</td>
+<td>Functional with significant gaps</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Live positioning (GPS)</td>
+<td>Functional with reliability gaps</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Geofencing and plant-node tracking</td>
+<td>Partially blocked</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Fleet management (53 torpedoes)</td>
+<td>Functional with inconsistencies</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Weighbridge audit</td>
+<td>Functional with significant gaps</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Consumer-side data (all 4 SMS units)</td>
+<td>Partially blocked</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>10</td>
+<td>SMS Performance — yield and loss</td>
+<td>Blocked for SMS-1, SMS-2, SMS-3</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>11</td>
+<td>SMS caster analytics — all SMS units</td>
+<td>Blocked for SMS-1, SMS-2, SMS-3</td>
+<td style="text-align: right;">(cross-referenced to 10)</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Heat trace (BF → SMS lineage)</td>
+<td>Approximate; deterministic version blocked</td>
+<td style="text-align: right;">4 (all cross-references)</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Alerts and exceptions</td>
+<td>Restricted by upstream gaps</td>
+<td style="text-align: right;">5 (mostly cross-references)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-severity-rollup">1.2 Severity rollup</h3>
+<table>
+<thead>
+<tr>
+<th>Severity</th>
+<th style="text-align: right;">Count</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BLOCKER</td>
+<td style="text-align: right;">7</td>
+<td>Cannot deliver the affected module without remediation</td>
+</tr>
+<tr>
+<td>SIGNIFICANT</td>
+<td style="text-align: right;">17</td>
+<td>Module is partially functional; significant capability constrained</td>
+</tr>
+<tr>
+<td>INCONSISTENT</td>
+<td style="text-align: right;">5</td>
+<td>Data exists but unreliable; remediation requires workflow or quality enforcement</td>
+</tr>
+<tr>
+<td>ENHANCEMENT</td>
+<td style="text-align: right;">1</td>
+<td>Module operates today; this would improve precision</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-top-five-critical-gaps">1.3 Top five critical gaps</h3>
+<p>The following five gaps, if closed by JSW, would unlock the largest fraction of currently-constrained HMD capability:</p>
+<ol>
+<li>
+<p><strong>Gap 1.1 — No shared identifier between BF tap and SMS heat.</strong> Today, the link between a producer-side trip and the SMS heat it feeds is inferential. A single column exposed on either side (<code>HEAT_NO</code> on WBATNGL or <code>TRIP_ID</code> on HTS) would unlock deterministic lineage, audit trail, and per-BF attribution of SMS outcomes. <em>Severity: BLOCKER. Owner: JSW IT.</em></p>
+</li>
+<li>
+<p><strong>Gap 10.1 — SMS-2 caster data not accessible.</strong> Approximately 95% of plant heats run on SMS-2 converters (D, E, F, G). Their lifecycle — yield, loss, operator, grade, REMARKS — is invisible to HMD because the relevant schema (<code>SPT001A</code>) is not readable by the integration user. Granting read access unlocks plant-wide consumer-performance reporting. <em>Severity: BLOCKER. Owner: JSW IT (schema access).</em></p>
+</li>
+<li>
+<p><strong>Gap 3.1 + 3.2 — No production targets or heat schedules accessible.</strong> No source database contains plan data. Without it, every "actual vs plan" KPI is structurally impossible. Exposing monthly producer targets and per-converter heat schedules unlocks the largest single category of operational analytics. <em>Severity: BLOCKER. Owner: JSW Planning + JSW IT.</em></p>
+</li>
+<li>
+<p><strong>Gap 2.1 — No producer-side equipment downtime source.</strong> HTS captures SMS-side breakdowns; no producer-side equivalent exists. Without it, BF and COREX utilisation, MTBF, and planned-vs-unplanned downtime cannot be reported, and operational anomalies (such as the production drop observed since 8 May 2026) cannot be correlated with cause. <em>Severity: BLOCKER. Owner: JSW IT + JSW Operations.</em></p>
+</li>
+<li>
+<p><strong>Gap 6.1 — No geofence polygon source.</strong> Plant-node identification today relies on coarse coordinate matching and free-text parsing. Source-provided geofence polygons (likely already maintained internally by the SuVeechi vendor) would enable deterministic boundary-sensitive analytics — entry/exit events, dwell-time by node, route adherence. <em>Severity: BLOCKER for the relevant features. Owner: SuVeechi vendor.</em></p>
+</li>
+</ol>
+<h3 id="14-the-ask">1.4 The ask</h3>
+<p>This report represents Deevia's good-faith inventory of the data required to deliver the HMD system as commissioned. To proceed from the current "partial-data" baseline to a system delivering on its full operational mandate, the following commitments are requested:</p>
+<ol>
+<li><strong>JSW IT</strong> to triage Gaps 1.1, 5 and 9 (database access / schema exposure issues) within 30 days of receipt, with concrete responses indicating exposure dates or — where exposure is not feasible — alternative paths.</li>
+<li><strong>JSW Operations</strong> to confirm the operational status of the items in Section 9.1 (SMS-1), 9.2 (SMS-3), 9.3 (Converter E), 2.3 (BF3), and 7.3 (silent torpedoes) within 14 days. These are factual confirmations rather than system changes.</li>
+<li><strong>JSW Planning</strong> to commit to a path for exposing production targets and heat schedules (Gaps 3.1 and 3.2). Either exposure of an existing system or a workflow definition for new data capture is acceptable.</li>
+<li><strong>SuVeechi vendor</strong>, via JSW, to expose geofence polygon definitions and (where available) a torpedo telemetry feed richer than the current three-state status enumeration.</li>
+</ol>
+<p>A second iteration of this report is anticipated 30 days from receipt, incorporating JSW's commitments against each gap and reflecting any new findings from further data inspection.</p>
+<hr>
+<hr>
+<h2 id="2-how-to-read-this-report">2. How to read this report</h2>
+<h3 id="21-severity-tags">2.1 Severity tags</h3>
+<p>Each gap is tagged with one of four severities. Tags define the operational nature of the gap and imply the type of remediation required.</p>
+<table>
+<thead>
+<tr>
+<th>Severity</th>
+<th>Definition</th>
+<th>Typical remediation path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>BLOCKER</strong></td>
+<td>The HMD module cannot be delivered without this data</td>
+<td>JSW Operations begins capturing the data (workflow change), or JSW IT exposes an existing but unsurfaced field</td>
+</tr>
+<tr>
+<td><strong>SIGNIFICANT</strong></td>
+<td>The module is partially functional but covers only a subset of the plant or omits a major dimension</td>
+<td>JSW extends an existing data capture to full plant coverage</td>
+</tr>
+<tr>
+<td><strong>INCONSISTENT</strong></td>
+<td>The data exists but is unreliable — NULL on a significant fraction of rows, late-filled, optional in workflow, or in inconsistent units across sources</td>
+<td>JSW enforces workflow rules or cleans up the data quality at source</td>
+</tr>
+<tr>
+<td><strong>ENHANCEMENT</strong></td>
+<td>The module operates today. The data would improve precision, coverage, or operator experience</td>
+<td>Discussed when bandwidth permits; not blocking</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-owner-tags">2.2 Owner tags</h3>
+<table>
+<thead>
+<tr>
+<th>Owner</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>JSW IT</strong></td>
+<td>Database administration, view definition, column exposure, schema access</td>
+</tr>
+<tr>
+<td><strong>JSW Operations</strong></td>
+<td>Process or workflow change at the plant (e.g., consistent operator data entry)</td>
+</tr>
+<tr>
+<td><strong>JSW Planning</strong></td>
+<td>Production and scheduling team — owners of plan/target data</td>
+</tr>
+<tr>
+<td><strong>JSW Vendor</strong></td>
+<td>Third-party system change (e.g., SuVeechi tracking platform vendor)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-entry-format">2.3 Entry format</h3>
+<p>Each gap follows the same nine-field summary, presented as a leading metadata table followed by named paragraphs. Every entry concludes with a Technical Detail block — and, where meaningful, a Sample Data block.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>One of the four tags above</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>One of the four owner tags</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Other modules or external questions this gap implicates</td>
+</tr>
+<tr>
+<td>Need</td>
+<td>What HMD requires, in business language</td>
+</tr>
+<tr>
+<td>Current state</td>
+<td>What is present at source today (schema, mechanism)</td>
+</tr>
+<tr>
+<td>Gap</td>
+<td>What is missing or unreliable</td>
+</tr>
+<tr>
+<td>Action requested</td>
+<td>Concrete next step JSW is asked to take</td>
+</tr>
+<tr>
+<td>Impact</td>
+<td>What HMD module or KPI is blocked or degraded</td>
+</tr>
+<tr>
+<td>Technical Detail</td>
+<td>Source schema, verification SQL, observed counts, sample data</td>
+</tr>
+</tbody>
+</table>
+<h3 id="24-source-databases-referenced-in-this-report">2.4 Source databases referenced in this report</h3>
+<p>All schema inspections cited below were performed against the following connections via DBeaver on 13–14 May 2026.</p>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th>Host / instance</th>
+<th>Read user</th>
+<th>Scope of data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WBATNGL</td>
+<td><code>10.10.1.67:1522 / WBATNGL</code> (Oracle)</td>
+<td><code>ITROSYSP</code></td>
+<td>Producer-side trip transactions: tap events, weighbridge weights, BF chemistry, BF exit timestamps</td>
+</tr>
+<tr>
+<td>HTS</td>
+<td><code>10.10.70.227:1522 / JVMLPROD.JSW.IN</code> (Oracle)</td>
+<td><code>ICT_IFACE</code></td>
+<td>Consumer-side heat records, caster lifecycle (SMS-4 only), equipment breakdowns (SMS-side only), unit master</td>
+</tr>
+<tr>
+<td>SuVeechi</td>
+<td><code>10.10.156.157:3306 / suvetracg</code> (MySQL)</td>
+<td><code>view_user</code></td>
+<td>Real-time torpedo GPS, status (Idle / Moving / Ign Off), free-text plant-location strings</td>
+</tr>
+<tr>
+<td>HMD Local</td>
+<td><code>localhost:5432 / hmd</code> (PostgreSQL on BF4 PC)</td>
+<td><code>postgres</code></td>
+<td>Internal mirrors of the three sources above, alerts, fleet master, application state</td>
+</tr>
+</tbody>
+</table>
+<p>The full per-database catalogue is available in <code>docs/data_sources/</code> (one Markdown file per source).</p>
+<hr>
+<h2 id="3-detailed-gaps-by-module">3. Detailed gaps by module</h2>
+<p>The thirteen HMD modules are organised into four thematic clusters. Modules within a cluster are independent and may be acted on in parallel by JSW.</p>
+<ul>
+<li><strong>Cluster A — Production.</strong> What is being made at the producer side.</li>
+<li><strong>Cluster B — Movement.</strong> How hot metal travels from producer to consumer.</li>
+<li><strong>Cluster C — Consumption.</strong> What happens at the SMS / converter side.</li>
+<li><strong>Cluster D — Cross-cutting.</strong> Alerts, exceptions, and supporting data.</li>
+</ul>
+<hr>
+<h2 id="3a-cluster-a-production-what-is-being-made">3A. Cluster A — Production (what is being made)</h2>
+<p>This cluster addresses three modules: producer-side data captured per trip, equipment availability and downtime on the producer side, and production planning and targets against which performance is measured.</p>
+<hr>
+<h3 id="module-1-producer-side-data-bf1bf5-corex1-corex2">Module 1 — Producer-side data (BF1–BF5, COREX1, COREX2)</h3>
+<p><strong>Module summary.</strong> WBATNGL provides per-trip producer-side data: tap event metadata, weighbridge weights, exit timestamps, and basic tap chemistry. Coverage spans all seven producers, but five distinct gaps prevent the data from being fully usable for plant-wide operational analytics: (a) absence of a cross-system identifier linking BF tap to SMS heat, (b) silicon chemistry coverage limited to BF4, (c) anomalous sulfur values for non-BF4 producers, (d) absence of an explicit tap-fire timestamp, and (e) a single-point-of-failure Database Link dependency for four of the seven producers.</p>
+<hr>
+<h4 id="gap-11-no-source-side-identifier-linking-a-bf-tap-to-its-sms-heat">Gap 1.1 — No source-side identifier linking a BF tap to its SMS heat</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 12 (Heat trace); Q1 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A deterministic identifier shared between WBATNGL and HTS that links a single hot-metal trip at the producer side to the SMS heat that the metal will eventually feed. This identifier is required for unambiguous, audit-grade lineage between every BF tap and every SMS heat.</p>
+<p><strong>Current state.</strong> WBATNGL exposes a producer-side identifier (<code>TRIP_ID</code>) and a torpedo identifier (<code>LADLENO</code>) on every trip record. HTS exposes a consumer-side identifier (<code>HEAT_NO</code>) and the same torpedo identifier (<code>TORPEDO_NO</code>) on every heat record. Neither system contains a reference to the other system's primary identifier.</p>
+<p><strong>Gap.</strong> No shared key exists between the two systems. The only field common to both records is the torpedo identifier, but a torpedo is reused across many trips — it carries hundreds of trips per month and cannot uniquely identify a specific tap-to-heat pair on its own.</p>
+<p><strong>Action requested.</strong> Expose a heat-reference column (<code>HEAT_NO</code>, <code>TAP_HEAT</code>, or equivalent) on <code>BF3.WB_TRANS_DATA_ITRO</code> and on the <code>BF5.ZWB_TRANSACTION_DATA_ITRO_B</code> fallback view. The column should be populated at the moment SMS assigns the upcoming heat to the inbound torpedo. As an equivalent alternative, expose a producer-side identifier (<code>TRIP_ID</code> or <code>TAP_NO + SOURCE_LAB</code>) on <code>HTS.VW_HTS_HOTMETAL_DATA</code> so the link can be made from either side.</p>
+<p><strong>Impact.</strong> Any audit, regulatory query, or analytical report asking "which BF tap produced this heat?" cannot be answered deterministically. Per-BF attribution of SMS-side outcomes (yield, loss, grade) is structurally unreliable. Regulatory traceability of a specific heat back to its producer source is weakened.</p>
+<h5 id="technical-detail">Technical Detail</h5>
+<p>WBATNGL trip-side schema (key columns of <code>BF3.WB_TRANS_DATA_ITRO</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TRIP_ID</td>
+<td>VARCHAR2</td>
+<td>Producer-side trip identifier</td>
+</tr>
+<tr>
+<td>LADLENO</td>
+<td>VARCHAR2</td>
+<td>Torpedo identifier (raw form)</td>
+</tr>
+<tr>
+<td>SOURCE_LAB</td>
+<td>VARCHAR2</td>
+<td>Producer code: BF1–BF5, COREX1, COREX2</td>
+</tr>
+<tr>
+<td>TAP_NO</td>
+<td>NUMBER</td>
+<td>Tap sequence number</td>
+</tr>
+<tr>
+<td>TAP_HOLE</td>
+<td>NUMBER</td>
+<td>Tap hole identifier</td>
+</tr>
+<tr>
+<td>FIRST_TARE_TIME</td>
+<td>DATE</td>
+<td>Empty torpedo arrives at weighbridge</td>
+</tr>
+<tr>
+<td>OUT_DATE</td>
+<td>DATE</td>
+<td>Torpedo exits BF gate</td>
+</tr>
+<tr>
+<td>CLOSETIME</td>
+<td>DATE</td>
+<td>Weighbridge transaction closed</td>
+</tr>
+<tr>
+<td>GROSS_WEIGHT, TARE_WEIGHT, NET_WEIGHT</td>
+<td>NUMBER</td>
+<td>Trip weights</td>
+</tr>
+<tr>
+<td>TEMP, SI_L, S_L</td>
+<td>NUMBER</td>
+<td>Tap chemistry</td>
+</tr>
+<tr>
+<td><em>(no HEAT_NO column)</em></td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>HTS heat-side schema (key columns of <code>HTS.VW_HTS_HOTMETAL_DATA</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HEAT_NO</td>
+<td>VARCHAR2</td>
+<td>SMS-side heat identifier</td>
+</tr>
+<tr>
+<td>CONVERTER_NO</td>
+<td>VARCHAR2</td>
+<td>D, E, F, G (SMS-2); H, I (SMS-4)</td>
+</tr>
+<tr>
+<td>SMS_UNIT</td>
+<td>VARCHAR2</td>
+<td>SMS-2 / SMS-4</td>
+</tr>
+<tr>
+<td>TORPEDO_NO</td>
+<td>VARCHAR2</td>
+<td>Torpedo identifier</td>
+</tr>
+<tr>
+<td>HOTMETAL_QTY</td>
+<td>NUMBER</td>
+<td>Tonnes received at converter</td>
+</tr>
+<tr>
+<td>TORPEDO_IN_TIME</td>
+<td>DATE</td>
+<td>Torpedo arrives at converter</td>
+</tr>
+<tr>
+<td>TORPEDO_OUT_TIME</td>
+<td>DATE</td>
+<td>Torpedo released from converter</td>
+</tr>
+<tr>
+<td><em>(no TRIP_ID, TAP_NO, or BF-side reference)</em></td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Verification SQL (Oracle, runs against either schema):</p>
+<pre><code class="language-sql">-- 1. Confirm no HEAT-related column on the WBATNGL trip view
+SELECT column_name
+FROM   all_tab_columns
+WHERE  owner = 'BF3'
+  AND  table_name = 'WB_TRANS_DATA_ITRO'
+  AND  column_name LIKE '%HEAT%';
+-- Returns: 0 rows
+
+-- 2. Confirm no TRIP- or TAP-related column on the HTS heat view
+SELECT column_name
+FROM   all_tab_columns
+WHERE  owner = 'HTS'
+  AND  table_name = 'VW_HTS_HOTMETAL_DATA'
+  AND  (column_name LIKE '%TRIP%' OR column_name LIKE '%TAP%');
+-- Returns: 0 rows
+</code></pre>
+<p>Observed scale (30-day window, queried 2026-05-13):</p>
+<ul>
+<li>WBATNGL trip records: 3,307 rows</li>
+<li>HTS heat records: 35,151 rows total (all available history)</li>
+<li>Shared identifier between the two systems: none</li>
+</ul>
+<h5 id="sample-data">Sample data</h5>
+<p>Representative WBATNGL trip rows (live data, observed 2026-05-14, fields edited for brevity):</p>
+<table>
+<thead>
+<tr>
+<th>TRIP_ID</th>
+<th>LADLENO</th>
+<th>SOURCE_LAB</th>
+<th>OUT_DATE</th>
+<th style="text-align: right;">NET_WEIGHT (t)</th>
+<th style="text-align: right;">TEMP (°C)</th>
+<th style="text-align: right;">S_L (%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8373-TH4</td>
+<td>37</td>
+<td>BF4</td>
+<td>2026-05-14 13:02</td>
+<td style="text-align: right;">305.3</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">0.021</td>
+</tr>
+<tr>
+<td>8378-TH2</td>
+<td>11</td>
+<td>BF5</td>
+<td>NULL</td>
+<td style="text-align: right;">324.8</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">0.019</td>
+</tr>
+<tr>
+<td>8377-TH4</td>
+<td>7</td>
+<td>BF5</td>
+<td>NULL</td>
+<td style="text-align: right;">345.4</td>
+<td style="text-align: right;">1510</td>
+<td style="text-align: right;">0.018</td>
+</tr>
+</tbody>
+</table>
+<p>Representative HTS heat rows (live data, observed 2026-05-14):</p>
+<table>
+<thead>
+<tr>
+<th>HEAT_NO</th>
+<th>CONVERTER_NO</th>
+<th>SMS_UNIT</th>
+<th>TORPEDO_NO</th>
+<th>TORPEDO_IN_TIME</th>
+<th style="text-align: right;">HOTMETAL_QTY (t)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(heat number)</td>
+<td>G</td>
+<td>SMS-2</td>
+<td>9</td>
+<td>2026-05-14 10:42</td>
+<td style="text-align: right;">297.8</td>
+</tr>
+<tr>
+<td>(heat number)</td>
+<td>H</td>
+<td>SMS-4</td>
+<td>21</td>
+<td>2026-05-14 11:24</td>
+<td style="text-align: right;">320.4</td>
+</tr>
+<tr>
+<td>(heat number)</td>
+<td>I</td>
+<td>SMS-4</td>
+<td>53</td>
+<td>2026-05-14 11:58</td>
+<td style="text-align: right;">313.5</td>
+</tr>
+</tbody>
+</table>
+<p>The two record sets share only the torpedo identifier. No field on the WBATNGL side maps to <code>HEAT_NO</code>. No field on the HTS side maps to <code>TRIP_ID</code>, <code>TAP_NO</code>, or <code>SOURCE_LAB</code>.</p>
+<hr>
+<h4 id="gap-12-silicon-si-chemistry-captured-only-for-bf4">Gap 1.2 — Silicon (Si) chemistry captured only for BF4</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations (sampling workflow) + JSW IT (sync to database)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 13 (Alerts); Si-spec rules cannot apply plant-wide</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Silicon content at tap, measured for every producer on every trip where chemistry is sampled. Silicon is a critical hot-metal parameter for SMS converter operation (above 1.20% it stresses BOF slag chemistry; below 0.30% it indicates cold metal risk).</p>
+<p><strong>Current state.</strong> WBATNGL exposes a <code>SI_L</code> column on the trip view. Values are populated only for trips where <code>SOURCE_LAB = 'BF4'</code>. The column is NULL for trips from BF1, BF2, BF3, BF5, COREX1, and COREX2.</p>
+<p><strong>Gap.</strong> Silicon coverage is 0% across six of seven producers. Either silicon is not being measured for those producers, or it is being measured but is not surfaced in the WBATNGL view.</p>
+<p><strong>Action requested.</strong> Confirm whether silicon is sampled at producers other than BF4. If yes, expose the values in the same <code>SI_L</code> column. If no, define an operational policy on which producers will commence silicon sampling.</p>
+<p><strong>Impact.</strong> A plant-wide silicon-specification rule cannot be enforced. Any silicon-based KPI or alert is implicitly limited to BF4 trips. Cross-producer chemistry comparison is not possible. Spec-compliance dashboards would be misleading without explicit BF4-only labelling.</p>
+<h5 id="technical-detail_1">Technical Detail</h5>
+<p>Coverage probe (PostgreSQL HMD mirror; equivalent runs against the Oracle source):</p>
+<pre><code class="language-sql">SELECT
+    source_lab,
+    COUNT(*)                                  AS trips_30d,
+    COUNT(si_l)                               AS rows_with_si,
+    ROUND(100.0 * COUNT(si_l) / COUNT(*), 1)  AS si_coverage_pct,
+    ROUND(AVG(si_l)::numeric, 3)              AS si_avg
+FROM   wbatngl_trip_mirror
+WHERE  first_tare_time &gt;= NOW() - INTERVAL '30 days'
+GROUP  BY source_lab
+ORDER  BY source_lab;
+</code></pre>
+<p>Result (executed 2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>source_lab</th>
+<th style="text-align: right;">trips_30d</th>
+<th style="text-align: right;">rows_with_si</th>
+<th style="text-align: right;">si_coverage_pct</th>
+<th style="text-align: right;">si_avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF1</td>
+<td style="text-align: right;">(recent activity, partial)</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>BF2</td>
+<td style="text-align: right;">(recent activity, partial)</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>BF3</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">n/a</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>BF4</td>
+<td style="text-align: right;">≈ 790</td>
+<td style="text-align: right;">≈ 790</td>
+<td style="text-align: right;">≈ 100%</td>
+<td style="text-align: right;">(within plausible band)</td>
+</tr>
+<tr>
+<td>BF5</td>
+<td style="text-align: right;">(recent activity, partial)</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>COREX1</td>
+<td style="text-align: right;">(recent activity, partial)</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>COREX2</td>
+<td style="text-align: right;">(recent activity, partial)</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0.0%</td>
+<td style="text-align: right;">—</td>
+</tr>
+</tbody>
+</table>
+<p>Across the 30-day window probed, 790 rows had <code>SI_L</code> populated. All originated from <code>SOURCE_LAB = 'BF4'</code>. The other six producers reported zero rows with silicon present.</p>
+<h5 id="sample-data_1">Sample data</h5>
+<p>A BF4 row alongside a non-BF4 row demonstrates the divergence:</p>
+<table>
+<thead>
+<tr>
+<th>Trip row</th>
+<th>SOURCE_LAB</th>
+<th style="text-align: right;">NET_WEIGHT</th>
+<th style="text-align: right;">TEMP</th>
+<th style="text-align: right;">SI_L</th>
+<th style="text-align: right;">S_L</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Example A</td>
+<td>BF4</td>
+<td style="text-align: right;">305.3</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">0.45</td>
+<td style="text-align: right;">0.021</td>
+</tr>
+<tr>
+<td>Example B</td>
+<td>BF5</td>
+<td style="text-align: right;">324.8</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">NULL</td>
+<td style="text-align: right;">0.019</td>
+</tr>
+<tr>
+<td>Example C</td>
+<td>BF1</td>
+<td style="text-align: right;">296.7</td>
+<td style="text-align: right;">1510</td>
+<td style="text-align: right;">NULL</td>
+<td style="text-align: right;">0.022</td>
+</tr>
+<tr>
+<td>Example D</td>
+<td>COREX1</td>
+<td style="text-align: right;">248.2</td>
+<td style="text-align: right;">1497</td>
+<td style="text-align: right;">NULL</td>
+<td style="text-align: right;">1.37</td>
+</tr>
+</tbody>
+</table>
+<p><code>SI_L</code> populates only on the BF4 row; the others carry NULL despite identical-structured measurement opportunity. Sulfur (<code>S_L</code>) is populated on all rows but with the inconsistency described in Gap 1.3.</p>
+<hr>
+<h4 id="gap-13-anomalous-sulfur-s-value-distribution-for-non-bf4-producers">Gap 1.3 — Anomalous sulfur (S) value distribution for non-BF4 producers</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT (investigate at source) + JSW Operations (sampling workflow)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 13 (Alerts)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Reliable sulfur values across all seven producers, recorded in a consistent unit (typically percent by mass) so that uniform spec rules can be applied.</p>
+<p><strong>Current state.</strong> WBATNGL <code>S_L</code> is populated across all seven producers. However, the value distribution differs sharply between BF4 and the other six. BF4 values fall in the expected band for hot-metal sulfur (typically 0.015 to 0.050 percent). Non-BF4 values frequently exceed 0.10 and have been observed as high as 2.83 — implausible for hot-metal sulfur in percent.</p>
+<p><strong>Gap.</strong> Non-BF4 sulfur values appear to use a different unit, scale, or measurement procedure than BF4 values; alternatively, the data is subject to a systematic data-quality issue at source.</p>
+<p><strong>Action requested.</strong> Confirm the unit and scale used by non-BF4 sources for sulfur reporting. Document the canonical unit (most likely percent by mass) in the WBATNGL view comments. Normalise existing values at source if a unit conversion is required.</p>
+<p><strong>Impact.</strong> A uniform sulfur-spec rule cannot be applied plant-wide. Applying a threshold such as <code>S &gt; 0.05</code> would flag the majority of non-BF4 trips, which is operationally implausible. This indicates a data-quality issue rather than a chemistry problem.</p>
+<h5 id="technical-detail_2">Technical Detail</h5>
+<p>Distribution probe:</p>
+<pre><code class="language-sql">SELECT
+    source_lab,
+    COUNT(s_l)                                                    AS rows_with_s,
+    ROUND(MIN(s_l)::numeric, 3)                                   AS s_min,
+    ROUND(MAX(s_l)::numeric, 3)                                   AS s_max,
+    ROUND(AVG(s_l)::numeric, 3)                                   AS s_avg,
+    ROUND(PERCENTILE_CONT(0.5)
+            WITHIN GROUP (ORDER BY s_l)::numeric, 3)              AS s_median,
+    COUNT(*) FILTER (WHERE s_l &gt; 0.08)                            AS rows_over_0_08,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE s_l &gt; 0.08) /
+                  NULLIF(COUNT(s_l), 0), 1)                       AS pct_over_0_08
+FROM   wbatngl_trip_mirror
+WHERE  first_tare_time &gt;= NOW() - INTERVAL '30 days'
+   AND s_l IS NOT NULL
+GROUP  BY source_lab
+ORDER  BY source_lab;
+</code></pre>
+<p>Approximate result (probed 2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th style="text-align: right;">s_median</th>
+<th style="text-align: right;">s_max</th>
+<th style="text-align: right;">pct_over_0_08</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF4</td>
+<td style="text-align: right;">≈ 0.020</td>
+<td style="text-align: right;">≈ 0.070</td>
+<td style="text-align: right;">very low</td>
+</tr>
+<tr>
+<td>Non-BF4 (combined)</td>
+<td style="text-align: right;">≈ 0.27</td>
+<td style="text-align: right;">2.83</td>
+<td style="text-align: right;">59.7%</td>
+</tr>
+</tbody>
+</table>
+<p>The BF4 distribution is consistent with normal hot-metal sulfur expectations (≤ 0.05 in routine operation). The non-BF4 distribution is implausibly high if interpreted in the same unit. Confirmation from JSW IT or the source-side lab is required to interpret the values correctly.</p>
+<h5 id="sample-data_2">Sample data</h5>
+<p>Comparative trip rows illustrating the difference in S value magnitude:</p>
+<table>
+<thead>
+<tr>
+<th>Trip row</th>
+<th>SOURCE_LAB</th>
+<th style="text-align: right;">NET_WEIGHT</th>
+<th style="text-align: right;">TEMP</th>
+<th style="text-align: right;">S_L</th>
+<th>Plausible?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Example A</td>
+<td>BF4</td>
+<td style="text-align: right;">305.3</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">0.021</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Example B</td>
+<td>BF4</td>
+<td style="text-align: right;">314.6</td>
+<td style="text-align: right;">1542</td>
+<td style="text-align: right;">0.018</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Example C</td>
+<td>BF5</td>
+<td style="text-align: right;">324.8</td>
+<td style="text-align: right;">1536</td>
+<td style="text-align: right;">0.019</td>
+<td>Yes (low S)</td>
+</tr>
+<tr>
+<td>Example D</td>
+<td>BF1</td>
+<td style="text-align: right;">417.6</td>
+<td style="text-align: right;">1510</td>
+<td style="text-align: right;">0.32</td>
+<td>Anomalous</td>
+</tr>
+<tr>
+<td>Example E</td>
+<td>COREX1</td>
+<td style="text-align: right;">248.2</td>
+<td style="text-align: right;">1497</td>
+<td style="text-align: right;">1.37</td>
+<td>Implausible</td>
+</tr>
+</tbody>
+</table>
+<p>Two of the BF1 and COREX rows show values that, if interpreted as percent, are biologically impossible (sulfur near 1.37 percent in hot metal would indicate severe contamination). The most likely explanation is unit or scale inconsistency.</p>
+<hr>
+<h4 id="gap-14-no-explicit-tap-fire-timestamp">Gap 1.4 — No explicit tap-fire timestamp</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT (if captured internally) or JSW Operations (capture workflow)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 2 (BF downtime); Module 4 (Trip lifecycle); cycle-time KPIs</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A timestamp marking the actual tap-fire event at the BF — the instant hot metal begins flowing into the torpedo.</p>
+<p><strong>Current state.</strong> WBATNGL exposes three trip-related timestamps: <code>FIRST_TARE_TIME</code> (empty torpedo arrives at weighbridge), <code>CLOSETIME</code> (weighbridge transaction closed by operator), and <code>OUT_DATE</code> (torpedo exits BF gate). The actual tap-fire event is not captured in any column.</p>
+<p><strong>Gap.</strong> The tap fires at an unknown time between <code>FIRST_TARE_TIME</code> and <code>CLOSETIME</code>. No source column reports it, so the actual production time is unknown.</p>
+<p><strong>Action requested.</strong> Expose <code>TAP_START_TIME</code> and, if available, <code>TAP_END_TIME</code> on the WBATNGL trip view. If these timestamps are not captured anywhere today, JSW Operations should define a capture mechanism — either through PLC integration with the BF control system or through structured operator data entry.</p>
+<p><strong>Impact.</strong> BF utilisation analytics cannot be computed directly: tap-to-tap interval, tap duration, per-tap-hole utilisation, tap-fire rate per shift all require this timestamp. Any cycle-time metric anchored on tap time must use a proxy (currently <code>FIRST_TARE_TIME</code>), with an implicit error of several minutes to over an hour per trip.</p>
+<h5 id="technical-detail_3">Technical Detail</h5>
+<p>Verification SQL:</p>
+<pre><code class="language-sql">SELECT column_name, data_type
+FROM   all_tab_columns
+WHERE  owner = 'BF3'
+  AND  table_name = 'WB_TRANS_DATA_ITRO'
+  AND  (column_name LIKE '%TAP%TIME%'
+        OR column_name LIKE '%FIRE%'
+        OR column_name LIKE '%CAST_START%'
+        OR column_name LIKE '%POUR_START%');
+-- Returns: 0 rows
+</code></pre>
+<p>Timestamps actually exposed on the WBATNGL trip view:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Records</th>
+<th>Semantics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FIRST_TARE_TIME</td>
+<td>Torpedo arrives empty at weighbridge</td>
+<td>First touch on the trip record</td>
+</tr>
+<tr>
+<td>CLOSETIME</td>
+<td>Weighbridge transaction closed</td>
+<td>Typically after gross weighing</td>
+</tr>
+<tr>
+<td>OUT_DATE</td>
+<td>Torpedo exits BF gate</td>
+<td>Canonical dispatch event</td>
+</tr>
+<tr>
+<td>RECEIVED_DATE</td>
+<td>(Semantics unclear at source)</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>SMS_ACK_TIME</td>
+<td>SMS-side acknowledgement</td>
+<td>Optional; NULL on a significant fraction of rows</td>
+</tr>
+<tr>
+<td>UPDATED_DATE</td>
+<td>Audit timestamp</td>
+<td>Updated on any field change</td>
+</tr>
+</tbody>
+</table>
+<p>No column corresponds to the tap-fire event. The closest indirect signal is the gap between <code>FIRST_TARE_TIME</code> and <code>CLOSETIME</code>, but this duration conflates weighing, tap, sampling, and re-weighing — the tap itself cannot be isolated.</p>
+<hr>
+<h4 id="gap-15-database-link-dependency-for-four-of-seven-producers">Gap 1.5 — Database Link dependency for four of seven producers</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong> (operational risk)</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT (DBA team)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q9 in JSW weekly questions; operational resilience</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Resilient, directly-readable data access for trip data from BF1, BF2, COREX1, and COREX2.</p>
+<p><strong>Current state.</strong> Trip data for these four producers is exposed only through the WBATNGL view <code>BF3.WB_TRANS_DATA_ITRO</code>. Inspection of this view reveals it is internally defined as a <code>UNION ALL</code> of three branches, one of which is a remote Oracle database (referenced as "LRS") accessed via an Oracle Database Link from the BF3 schema. The native data for BF1, BF2, COREX1, and COREX2 resides in this remote LRS database.</p>
+<p><strong>Gap.</strong> If the Database Link from WBATNGL to LRS fails for any reason — network outage, credential expiry, remote database downtime, schema change on the remote side — trip data for those four producers ceases to appear in the union view. The failure is silent: the view does not raise an error; it simply returns zero rows from the affected branch. Consumers reading the view receive incomplete data without notification. No DB-Link health signal is exposed to consumers.</p>
+<p><strong>Action requested.</strong> Provide direct read-only Oracle credentials for the LRS instance (hostname, port, service name, dedicated user) so trip data for BF1, BF2, COREX1, and COREX2 can be read independently of the BF3 Database Link. As an alternative, expose a DB-Link health table or view that consumers can poll to detect link outages within an operational window.</p>
+<p><strong>Impact.</strong> Four of the seven producers' trip data — representing approximately 57% of producer coverage — is subject to a single point of failure with silent failure mode. Analytics covering producer-side activity is exposed to this risk for the affected coverage. BF3, BF4, and BF5 have local data paths and are not affected; BF5 additionally has a parallel direct view (<code>BF5.ZWB_TRANSACTION_DATA_ITRO_B</code>) that provides resilience.</p>
+<h5 id="technical-detail_4">Technical Detail</h5>
+<p>Inspection of the WBATNGL view definition (Oracle):</p>
+<pre><code class="language-sql">SELECT text_length, text
+FROM   all_views
+WHERE  owner = 'BF3'
+  AND  view_name = 'WB_TRANS_DATA_ITRO';
+</code></pre>
+<p>The view body follows the structural pattern (paraphrased; full column list omitted for brevity):</p>
+<pre><code class="language-sql">-- Branch 1: BF3 local data
+SELECT ... FROM BF3.WB_TRANSACTION_DATA
+
+UNION ALL
+
+-- Branch 2: remote BF1/BF2/COREX1/COREX2 data via DB Link
+SELECT ... FROM &lt;table&gt;@&lt;dblink_to_LRS&gt;
+
+UNION ALL
+
+-- Branch 3: BF5 local data
+SELECT ... FROM BF5.ZWB_TRANSACTION_DATA_ITRO_B
+</code></pre>
+<p>Source-attribution probe (PostgreSQL HMD mirror):</p>
+<pre><code class="language-sql">SELECT
+    source_table,
+    COUNT(*)                                AS rows,
+    COUNT(DISTINCT source_lab)              AS distinct_producers,
+    STRING_AGG(DISTINCT source_lab, ', ')   AS producers
+FROM   wbatngl_trip_mirror
+WHERE  first_tare_time &gt;= NOW() - INTERVAL '30 days'
+GROUP  BY source_table
+ORDER  BY rows DESC;
+</code></pre>
+<p>Observed dependency: trip rows for BF1, BF2, COREX1, and COREX2 arrive exclusively through the BF3 view's UNION-ALL branch that contains the DB Link to LRS. No alternative path to those producers' data has been identified.</p>
+<hr>
+<h3 id="module-1-areas-not-yet-investigated">Module 1 — Areas not yet investigated</h3>
+<p>The following producer-side data items have not been verified through schema inspection and may represent additional gaps. Operations or IT confirmation is requested.</p>
+<ol>
+<li>
+<p><strong>Operator identification per tap.</strong> No <code>OPERATOR_ID</code> or <code>SHIFT_OPERATOR</code> column has been observed on the WBATNGL trip view. If an operator is responsible for each tap, exposing this would enable per-operator accountability and performance metrics.</p>
+</li>
+<li>
+<p><strong>BF charge composition.</strong> No data on what is being fed into each BF (iron-ore mix, coke rate, flux ratios) is exposed in any of the four source databases inspected. Such data would normally reside in a BF process-control system.</p>
+</li>
+<li>
+<p><strong>Refractory campaign and age.</strong> No data on the refractory state of each BF (campaign number, age in days, last reline date) is exposed. Refractory state is operationally relevant for productivity and quality variance.</p>
+</li>
+<li>
+<p><strong>Tap-rejection or spillage events.</strong> No explicit flag exists for tapped metal that was rejected, spilled, or otherwise unfit for delivery.</p>
+</li>
+<li>
+<p><strong>Hot-metal mixer state.</strong> If JSW operates intermediate hot-metal mixers, their state is not visible in any source.</p>
+</li>
+</ol>
+<hr>
+<h3 id="module-2-bf-side-equipment-downtime">Module 2 — BF-side equipment downtime</h3>
+<p><strong>Module summary.</strong> Equipment availability and downtime on the producer side — breakdowns, planned maintenance, refractory campaigns, banking and slow-operating modes — are not captured in any source HMD currently has access to. The HTS database carries an equivalent table for SMS-side equipment (<code>H_EQUP_BREAKDOWN</code>), but no producer-side counterpart exists. As a consequence, producer utilisation KPIs and producer-side anomaly explanations cannot be derived from data.</p>
+<hr>
+<h4 id="gap-21-no-producer-side-equipment-breakdown-or-downtime-source">Gap 2.1 — No producer-side equipment breakdown or downtime source</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT (identify source if it exists) + JSW Operations (capture if not)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q8 in JSW weekly questions; Modules 2.2 and 2.3 below</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Per-producer downtime events with start time, end time, reason code, planned-versus-unplanned classification, and ideally the affected sub-system (cast house, stove, top, charging system, refractory).</p>
+<p><strong>Current state.</strong> HTS exposes <code>H_EQUP_BREAKDOWN</code> covering SMS-side equipment only. No equivalent table for BF-side or COREX-side equipment is exposed in any of the four source databases inspected.</p>
+<p><strong>Gap.</strong> Zero downtime data is accessible for any of the seven producers.</p>
+<p><strong>Action requested.</strong> Identify the source-of-truth for BF and COREX downtime events. If a Maintenance Management System (such as SAP PM or IBM Maximo) is in use internally, share connection details and the table or view that exposes events. If no such capture exists today, JSW Operations should define a capture workflow and the corresponding database schema.</p>
+<p><strong>Impact.</strong> Producer-side KPIs (utilisation percentage, MTBF, planned-vs-unplanned downtime split, scheduled-maintenance forecast) cannot be computed. The system cannot answer the question "is BF4 down right now?" except by inferring from absence of trip activity, which has a multi-hour confirmation lag.</p>
+<h5 id="technical-detail_5">Technical Detail</h5>
+<p>Search SQL (Oracle, all accessible schemas):</p>
+<pre><code class="language-sql">SELECT owner, table_name
+FROM   all_tables
+WHERE  table_name LIKE '%BREAKDOWN%'
+   OR  table_name LIKE '%DOWNTIME%'
+   OR  table_name LIKE '%OUTAGE%'
+   OR  table_name LIKE '%MAINT%'
+ORDER  BY owner, table_name;
+</code></pre>
+<p>Result on the union of <code>ITROSYSP</code> (WBATNGL) and <code>ICT_IFACE</code> (HTS) accessible schemas as of 2026-05-13:</p>
+<table>
+<thead>
+<tr>
+<th>Found table</th>
+<th>Owner</th>
+<th>Scope</th>
+<th>Producer coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H_EQUP_BREAKDOWN</td>
+<td>HTS</td>
+<td>SMS-side equipment events</td>
+<td>No — SMS-side only</td>
+</tr>
+<tr>
+<td><em>(no other breakdown table visible)</em></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>HMD-side check (PostgreSQL):</p>
+<pre><code class="language-sql">SELECT table_name
+FROM   information_schema.tables
+WHERE  table_schema = 'public'
+  AND  (table_name LIKE '%bf%' OR table_name LIKE '%corex%')
+  AND  (table_name LIKE '%breakdown%'
+        OR table_name LIKE '%downtime%'
+        OR table_name LIKE '%maint%');
+-- Returns: 0 rows
+</code></pre>
+<p>Across all four source databases probed, zero rows of producer-side equipment downtime data are accessible.</p>
+<h5 id="sample-data_3">Sample data</h5>
+<p>Sample row from <code>HTS.H_EQUP_BREAKDOWN</code> (illustrative of what the producer-side equivalent should resemble):</p>
+<table>
+<thead>
+<tr>
+<th>UNIT_CODE</th>
+<th>BRK_DATE</th>
+<th>END_DATE</th>
+<th>REASON</th>
+<th>DELAY_TYPE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(SMS-2 converter)</td>
+<td>2026-05-12 04:30</td>
+<td>2026-05-12 05:15</td>
+<td>TORPEDO POSITIONING DELAY</td>
+<td>OBM</td>
+</tr>
+<tr>
+<td>(SMS-4 converter)</td>
+<td>2026-05-13 02:00</td>
+<td>2026-05-13 03:20</td>
+<td>LADLE PREPARATION</td>
+<td>DEL</td>
+</tr>
+</tbody>
+</table>
+<p>No analogous row exists for any BF or COREX. The desired BF-side rows would resemble:</p>
+<table>
+<thead>
+<tr>
+<th>UNIT_CODE</th>
+<th>BRK_DATE</th>
+<th>END_DATE</th>
+<th>REASON</th>
+<th>DELAY_TYPE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(hypothetical) BF4</td>
+<td>(start time)</td>
+<td>(end time)</td>
+<td>CAST HOUSE TROUGH MAINTENANCE</td>
+<td>PLANNED</td>
+</tr>
+<tr>
+<td>(hypothetical) BF1</td>
+<td>(start time)</td>
+<td>(end time)</td>
+<td>STOVE CHANGEOVER</td>
+<td>OPERATIONAL</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-22-recent-production-rate-regime-change-since-8-may-2026-unexplained-at-source">Gap 2.2 — Recent production-rate regime change (since 8 May 2026) unexplained at source</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations (provide retrospective explanation) + JSW IT (capture future events; see Gap 2.1)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q13 in JSW weekly questions; tightly coupled to Gap 2.1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Source-system records of operational events that explain observed production-rate changes, so that output anomalies can be correlated with operational causes.</p>
+<p><strong>Current state.</strong> WBATNGL daily aggregates show a clear regime change in producer-side throughput. Daily total dropped from a stable ~35 kt/day baseline (covering 14 April to 7 May 2026) to a substantially lower 5–23 kt/day range from 8 May 2026 onwards. No source database inspected contains any record explaining the change.</p>
+<p><strong>Gap.</strong> Operations evidently know what occurred, but the cause is not represented in any queryable source. Without ground truth, the regime change is observable but not interpretable from data alone.</p>
+<p><strong>Action requested.</strong> Provide a written explanation for the 8 May 2026 production regime change (planned maintenance window, specific BF or COREX outage, demand-side throttle, refractory campaign, other). Commit to capturing future operational events in a queryable source per Gap 2.1.</p>
+<p><strong>Impact.</strong> Anomaly detection and post-mortem analytics cannot connect output drops to operational causes. The 30-day throughput chart shows the regime change visually but cannot annotate or explain it.</p>
+<h5 id="technical-detail_6">Technical Detail</h5>
+<p>Probe SQL:</p>
+<pre><code class="language-sql">SELECT
+    date_trunc('day', COALESCE(out_date, closetime))::date  AS day,
+    COUNT(*)                                                 AS trips,
+    ROUND(SUM(net_weight)::numeric, 0)                       AS tonnes,
+    ROUND((SUM(net_weight) / 1000.0)::numeric, 2)            AS kt
+FROM   wbatngl_trip_mirror
+WHERE  COALESCE(out_date, closetime) &gt;=
+       (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days'
+GROUP  BY day
+ORDER  BY day DESC;
+</code></pre>
+<p>Observed daily throughput (executed 2026-05-14):</p>
+<table>
+<thead>
+<tr>
+<th>Day</th>
+<th style="text-align: right;">Trips</th>
+<th style="text-align: right;">Tonnes (kt)</th>
+<th>Regime</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-05-14 (partial)</td>
+<td style="text-align: right;">20</td>
+<td style="text-align: right;">5.90</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-13</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">16.21</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-12</td>
+<td style="text-align: right;">79</td>
+<td style="text-align: right;">23.24</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-11</td>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">14.85</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-10</td>
+<td style="text-align: right;">28</td>
+<td style="text-align: right;">8.32</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-09</td>
+<td style="text-align: right;">45</td>
+<td style="text-align: right;">13.88</td>
+<td>Below baseline</td>
+</tr>
+<tr>
+<td>2026-05-08</td>
+<td style="text-align: right;">92</td>
+<td style="text-align: right;">28.87</td>
+<td>First drop</td>
+</tr>
+<tr>
+<td>2026-05-07</td>
+<td style="text-align: right;">114</td>
+<td style="text-align: right;">34.46</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-05-06</td>
+<td style="text-align: right;">115</td>
+<td style="text-align: right;">35.29</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-05-05</td>
+<td style="text-align: right;">124</td>
+<td style="text-align: right;">37.43</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-05-04</td>
+<td style="text-align: right;">118</td>
+<td style="text-align: right;">36.16</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-05-03</td>
+<td style="text-align: right;">117</td>
+<td style="text-align: right;">35.64</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-05-02</td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">38.92</td>
+<td>Baseline (peak in window)</td>
+</tr>
+<tr>
+<td>2026-05-01</td>
+<td style="text-align: right;">118</td>
+<td style="text-align: right;">35.48</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-04-30</td>
+<td style="text-align: right;">116</td>
+<td style="text-align: right;">35.06</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-04-29</td>
+<td style="text-align: right;">122</td>
+<td style="text-align: right;">36.01</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-04-28</td>
+<td style="text-align: right;">122</td>
+<td style="text-align: right;">37.08</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>2026-04-27</td>
+<td style="text-align: right;">132</td>
+<td style="text-align: right;">38.74</td>
+<td>Baseline</td>
+</tr>
+<tr>
+<td>...</td>
+<td style="text-align: right;">...</td>
+<td style="text-align: right;">...</td>
+<td>(sustained baseline back to 2026-04-14)</td>
+</tr>
+</tbody>
+</table>
+<p>The baseline averaged approximately 35.5 kt/day with a typical band of 30–39 kt/day. From 8 May 2026 onward, the daily rate fell to a 5.9–28.9 kt range, with most days below 17 kt. The transition is sharp and sustained — not a single-day dip.</p>
+<hr>
+<h4 id="gap-23-bf3-long-term-stoppage-since-24-september-2025-unexplained-at-source">Gap 2.3 — BF3 long-term stoppage (since 24 September 2025) unexplained at source</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Resolves once Gap 2.1 (downtime source) is closed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Documented source-system evidence of long-term producer stoppages.</p>
+<p><strong>Current state.</strong> WBATNGL shows zero trip activity for <code>SOURCE_LAB = 'BF3'</code> since 2025-09-24. No source record explains whether BF3 is decommissioned, in long-term maintenance, under refractory campaign, or temporarily idle.</p>
+<p><strong>Gap.</strong> The operational status of a major producer is informal knowledge, not represented in queryable form.</p>
+<p><strong>Action requested.</strong> Confirm BF3 status as of today (offline, under refractory campaign, decommissioned, awaiting parts, other) and indicate the expected resumption date if applicable. Capture this state in a producer-status table going forward (see Gap 2.1).</p>
+<p><strong>Impact.</strong> Dashboards and reports show BF3 as a producer alongside the others, without any source-side indication that it is structurally inactive. Producer-side breakdown views correctly show BF3 at zero but cannot explain why. Operators reading the dashboard interpret "BF3 = 0" as "BF3 had a slow day" rather than "BF3 has not produced for over seven months".</p>
+<h5 id="technical-detail_7">Technical Detail</h5>
+<p>Verification SQL:</p>
+<pre><code class="language-sql">SELECT
+    source_lab,
+    COUNT(*)                                AS trips_total,
+    MAX(COALESCE(out_date, closetime))      AS most_recent_trip,
+    MIN(COALESCE(out_date, closetime))      AS earliest_trip
+FROM   wbatngl_trip_mirror
+WHERE  source_lab = 'BF3';
+</code></pre>
+<p>Observed result (executed 2026-05-14):</p>
+<table>
+<thead>
+<tr>
+<th>source_lab</th>
+<th style="text-align: right;">trips_total</th>
+<th>most_recent_trip</th>
+<th>earliest_trip</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF3</td>
+<td style="text-align: right;">(non-zero historical count, from 2023 or earlier)</td>
+<td>2025-09-24</td>
+<td>(earlier date)</td>
+</tr>
+</tbody>
+</table>
+<p>As of 2026-05-14, BF3 has had no recorded trip activity for approximately 232 days. The pattern is consistent with extended shutdown rather than intermittent inactivity, but the source data does not classify or explain it.</p>
+<hr>
+<h3 id="module-2-areas-not-yet-investigated">Module 2 — Areas not yet investigated</h3>
+<ol>
+<li>
+<p><strong>Planned maintenance windows.</strong> Even if a future downtime source captures events, planned windows entered in advance (with expected duration) would enable forecast-based production planning. Whether any system holds advance maintenance schedules has not been confirmed.</p>
+</li>
+<li>
+<p><strong>Operational mode classification.</strong> Beyond "up" and "down", BFs operate in additional modes (full operating, slow operating, banking) that affect output rate. No source data on operational mode has been identified.</p>
+</li>
+<li>
+<p><strong>Equipment age, wear, and asset register.</strong> Per-equipment age, last-overhaul date, and asset metadata are not visible in any source. Such data would normally reside in an asset-management system.</p>
+</li>
+<li>
+<p><strong>Cause-and-effect annotations.</strong> If downtime events are linked to upstream causes (e.g., "BF4 reduced due to upstream raw-material constraint"), those relations are not visible.</p>
+</li>
+</ol>
+<hr>
+<h3 id="module-3-production-planning-and-targets">Module 3 — Production planning and targets</h3>
+<p><strong>Module summary.</strong> No production plan, target, schedule, or forecast data is exposed in any of the four source databases inspected. Every comparison of actual performance against plan — at producer level, consumer level, or shift level — is therefore not computable from source data. This is the largest single analytics gap in the system.</p>
+<hr>
+<h4 id="gap-31-no-producer-side-production-targets">Gap 3.1 — No producer-side production targets</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> for any "vs plan" KPI</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Planning (data owner) + JSW IT (exposure)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q6 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Per-producer monthly target tonnes (BF1–BF5, COREX1, COREX2). At minimum, monthly targets with assumed flat daily breakdown; ideally, daily plan and shift-level plan.</p>
+<p><strong>Current state.</strong> No plan-side or target-side data is exposed in any of the four databases inspected. WBATNGL exposes actuals only. HTS exposes actuals only. SuVeechi exposes torpedo state snapshots only. The HMD internal database has plan-shaped table scaffolding (<code>daily_plans</code>) but it has never been populated.</p>
+<p><strong>Gap.</strong> No accessible source for production targets exists.</p>
+<p><strong>Action requested.</strong> Identify where production targets are maintained operationally (most likely in JSW's ERP system, a Manufacturing Execution System, the Planning team's worksheets, or a planning database). Expose targets in a queryable form. At minimum, monthly target per producer. Ideal: shift-level plan with grade mix.</p>
+<p><strong>Impact.</strong> All producer-side performance reporting is throughput-only. Reports such as "% of daily target achieved", "month-to-date plan adherence", and "monthly forecast versus commitment" cannot be produced. Performance dashboards have nothing to which they can compare actuals.</p>
+<h5 id="technical-detail_8">Technical Detail</h5>
+<p>Search SQL (Oracle WBATNGL):</p>
+<pre><code class="language-sql">SELECT owner, table_name
+FROM   all_tables
+WHERE  table_name LIKE '%PLAN%'
+   OR  table_name LIKE '%TARGET%'
+   OR  table_name LIKE '%SCHEDULE%'
+   OR  table_name LIKE '%BUDGET%'
+   OR  table_name LIKE '%FORECAST%'
+ORDER  BY owner, table_name;
+</code></pre>
+<p>Same search on Oracle HTS (using <code>ICT_IFACE</code> accessible schemas):</p>
+<pre><code class="language-sql">SELECT owner, table_name
+FROM   all_tables
+WHERE  table_name LIKE '%PLAN%'
+   OR  table_name LIKE '%TARGET%'
+   OR  table_name LIKE '%SCHEDULE%'
+   OR  table_name LIKE '%FORECAST%'
+ORDER  BY owner, table_name;
+</code></pre>
+<p>Search on PostgreSQL (HMD internal):</p>
+<pre><code class="language-sql">SELECT table_name, table_type
+FROM   information_schema.tables
+WHERE  table_schema = 'public'
+  AND  (table_name LIKE '%plan%' OR table_name LIKE '%target%');
+</code></pre>
+<p>Result (executed 2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Plan/Target tables visible</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WBATNGL (Oracle)</td>
+<td>None</td>
+<td>No plan or target table accessible to <code>ITROSYSP</code></td>
+</tr>
+<tr>
+<td>HTS (Oracle)</td>
+<td>None</td>
+<td>No plan or target table accessible to <code>ICT_IFACE</code></td>
+</tr>
+<tr>
+<td>SuVeechi (MySQL)</td>
+<td>None</td>
+<td>Schema contains only <code>vw_unit_status_ist</code></td>
+</tr>
+<tr>
+<td>HMD Local (PostgreSQL)</td>
+<td><code>daily_plans</code> exists</td>
+<td>0 rows; never populated by operators</td>
+</tr>
+</tbody>
+</table>
+<p>Across all four source databases, zero production-target data is accessible.</p>
+<hr>
+<h4 id="gap-32-no-consumer-side-heat-schedules">Gap 3.2 — No consumer-side heat schedules</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> for SMS-side "vs plan" KPIs</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Planning + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q6 in JSW weekly questions; same scope as Gap 3.1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Per-converter planned heat schedule: planned heat count per shift, planned grade, planned start time, planned heat duration.</p>
+<p><strong>Current state.</strong> HTS records actual heat events (<code>H_CASTER_HEAT_PROCESS</code>, <code>VW_HTS_HOTMETAL_DATA</code>) but no planned-heat counterpart.</p>
+<p><strong>Gap.</strong> No source for SMS-side heat schedules is accessible.</p>
+<p><strong>Action requested.</strong> Expose converter heat schedules, either as a new HTS-side table or through a planning schema. At minimum, per-shift planned heat counts per converter, with the planned grade.</p>
+<p><strong>Impact.</strong> SMS performance KPIs are throughput-only. "On-time heat starts", "heat-schedule adherence", and "planned versus actual grade mix" cannot be reported.</p>
+<h5 id="technical-detail_9">Technical Detail</h5>
+<p>Search across HTS-adjacent schemas:</p>
+<pre><code class="language-sql">SELECT owner, table_name
+FROM   all_tables
+WHERE  (table_name LIKE '%PLAN%'
+        OR table_name LIKE '%SCHEDULE%'
+        OR table_name LIKE '%FORECAST%')
+  AND  owner IN ('HTS', 'SPT001A', 'SMS3')
+ORDER  BY owner, table_name;
+</code></pre>
+<p>Result on 2026-05-13: no plan or schedule table accessible to <code>ICT_IFACE</code> in any of the searched schemas.</p>
+<p>Tables actually present in the HTS schema:</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VW_HTS_HOTMETAL_DATA</td>
+<td>Actual hot-metal deliveries to converters</td>
+</tr>
+<tr>
+<td>H_CASTER_HEAT_PROCESS</td>
+<td>Actual heat lifecycle events (SMS-4 only)</td>
+</tr>
+<tr>
+<td>H_CASTER_CONSUMPTION</td>
+<td>Actual yield and loss data (SMS-4 only)</td>
+</tr>
+<tr>
+<td>H_EQUP_BREAKDOWN</td>
+<td>Equipment breakdown events</td>
+</tr>
+<tr>
+<td>H_UNIT_CODE</td>
+<td>Master list of torpedo units</td>
+</tr>
+<tr>
+<td><em>(no planned-heat table)</em></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-33-no-trip-pre-assignment-data">Gap 3.3 — No trip pre-assignment data</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations (if dispatch is formally tracked) + JSW IT (exposure)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 4 (Trip lifecycle); Module 5 (Live positioning); Q11</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Visibility of torpedo-to-producer allocation before the torpedo arrives physically at the BF weighbridge.</p>
+<p><strong>Current state.</strong> A trip record appears in WBATNGL only after <code>FIRST_TARE_TIME</code> fires — that is, the torpedo is already at the BF-side weighbridge. No earlier-stage data is exposed (no record of "torpedo X dispatched from depot to BF4 at HH:MM").</p>
+<p><strong>Gap.</strong> No source visibility of the dispatch decision (which torpedo is assigned to which producer) exists prior to physical arrival at the weighbridge.</p>
+<p><strong>Action requested.</strong> Clarify whether torpedo-to-producer allocation is a formally tracked operational decision today. If yes, expose it as a queryable record with assignment time, target producer, target consumer, and expected arrival. If no, this represents an operational workflow gap rather than a data exposure gap and would require operations-side workflow definition before any system-level capture.</p>
+<p><strong>Impact.</strong> "Torpedo X is en route to BF4 with expected arrival of HH:MM" cannot be shown. Live tracking visibility begins only at BF weighbridge arrival; pre-arrival activity is invisible.</p>
+<h5 id="technical-detail_10">Technical Detail</h5>
+<p>Schema search:</p>
+<pre><code class="language-sql">SELECT column_name, data_type
+FROM   all_tab_columns
+WHERE  owner = 'BF3'
+  AND  table_name = 'WB_TRANS_DATA_ITRO'
+  AND  (column_name LIKE '%ASSIGN%'
+        OR column_name LIKE '%DISPATCH%'
+        OR column_name LIKE '%ALLOC%'
+        OR column_name LIKE '%PLANNED%');
+-- Returns: 0 rows
+</code></pre>
+<p>The earliest timestamp present on any WBATNGL trip record is <code>FIRST_TARE_TIME</code>. Nothing earlier in the trip lifecycle is captured. On the SuVeechi side, only current torpedo location is visible; there is no concept of "next assignment". On the HMD-internal side, a <code>trips</code> table exists in the schema but is unused (0 rows; operators do not currently use HMD to record manual trip allocation).</p>
+<hr>
+<h3 id="module-3-areas-not-yet-investigated">Module 3 — Areas not yet investigated</h3>
+<ol>
+<li>
+<p><strong>Grade-mix targets per converter.</strong> Daily or shift-level breakdown of planned heats by steel grade. Required for grade-specific output reporting.</p>
+</li>
+<li>
+<p><strong>Demand-side / order book.</strong> Customer orders that drive heat scheduling decisions. No order book has been identified in any inspected source.</p>
+</li>
+<li>
+<p><strong>Tap-schedule (BF side).</strong> Whether each BF has a per-tap-hole scheduled time (next tap due at HH:MM) is unconfirmed. Operationally common but not visible in source data.</p>
+</li>
+<li>
+<p><strong>Campaign planning.</strong> Multi-month plans covering refractory campaigns, major maintenance windows, and seasonal demand variation. Not identified.</p>
+</li>
+</ol>
+<hr>
+<h2 id="3b-cluster-b-movement-how-hot-metal-travels-from-bf-to-sms">3B. Cluster B — Movement (how hot metal travels from BF to SMS)</h2>
+<p>This cluster addresses five modules: end-to-end trip-lifecycle tracking, live positioning of torpedoes, geofencing and plant-node identification, fleet management for the torpedo ladle pool, and weighbridge audit coverage across all weighbridges.</p>
+<hr>
+<h3 id="module-4-trip-lifecycle-tracking">Module 4 — Trip lifecycle tracking</h3>
+<p><strong>Module summary.</strong> A trip is the central business object of the HMD system. Its lifecycle spans roughly seven discrete events: weighbridge arrival, tap fire, gross weighing, weighbridge transaction close, BF gate exit, SMS arrival, and SMS acknowledgement (or release at converter). The data needed to track each event reliably is partially available across WBATNGL and HTS, but five distinct gaps make end-to-end trip-state determination unreliable: absence of a source-side state column, unreliable SMS-acknowledgement timestamps, absence of a trip-failure event source, ambiguous <code>RECEIVED_DATE</code> semantics, and an undocumented composite trip-ID format.</p>
+<hr>
+<h4 id="gap-41-no-source-side-trip-state-or-lifecycle-column">Gap 4.1 — No source-side trip-state or lifecycle column</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Modules 9, 10 (Consumer-side); Q2 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A single column on each WBATNGL trip record that names the trip's current lifecycle state (Created, At BF Tap, Weighed-Loaded, Dispatched, In Transit, Arrived at SMS, Completed, Failed).</p>
+<p><strong>Current state.</strong> No state or status column is exposed on the WBATNGL trip view. Trip state must be inferred indirectly from which of the trip's timestamp columns are populated (<code>FIRST_TARE_TIME</code>, <code>GROSS_WEIGHT</code>, <code>CLOSETIME</code>, <code>OUT_DATE</code>, <code>RECEIVED_DATE</code>, <code>SMS_ACK_TIME</code>) at the moment of reading.</p>
+<p><strong>Gap.</strong> The lifecycle state is a property derived from the data shape, not declared by source. The inference is fragile when columns are NULL for workflow reasons (see Gap 4.2 on SMS_ACK_TIME).</p>
+<p><strong>Action requested.</strong> Expose a <code>TRIP_STATUS</code> column on <code>BF3.WB_TRANS_DATA_ITRO</code> (and on the BF5 fallback view) populated by the source system at each lifecycle transition. Recommended canonical values: <code>CREATED</code>, <code>AT_BF_TAP</code>, <code>WB_LOADED</code>, <code>DISPATCHED</code>, <code>IN_TRANSIT</code>, <code>AT_SMS</code>, <code>COMPLETED</code>, <code>FAILED</code>, <code>DIVERTED</code>.</p>
+<p><strong>Impact.</strong> State inference is required at every dashboard read. State changes that do not correspond to a new timestamp (for example, an operational decision to mark a trip "diverted" without a physical event) cannot be represented.</p>
+<h5 id="technical-detail_11">Technical Detail</h5>
+<p>Verification SQL:</p>
+<pre><code class="language-sql">SELECT column_name, data_type
+FROM   all_tab_columns
+WHERE  owner = 'BF3'
+  AND  table_name = 'WB_TRANS_DATA_ITRO'
+  AND  (column_name LIKE '%STATUS%'
+        OR column_name LIKE '%STATE%'
+        OR column_name LIKE '%STAGE%'
+        OR column_name LIKE '%PHASE%');
+-- Returns: 0 rows
+</code></pre>
+<p>State derived today from timestamp presence (HMD internal logic):</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>At BF Weighbridge</td>
+<td><code>FIRST_TARE_TIME</code> set, no <code>TAP_NO</code> yet</td>
+</tr>
+<tr>
+<td>At BF Tap</td>
+<td><code>TAP_NO</code> set, no <code>GROSS_WEIGHT</code> yet</td>
+</tr>
+<tr>
+<td>WB Loaded</td>
+<td><code>GROSS_WEIGHT</code> set, no <code>OUT_DATE</code> or <code>CLOSETIME</code> yet</td>
+</tr>
+<tr>
+<td>In Transit</td>
+<td><code>OUT_DATE</code> or <code>CLOSETIME</code> set, no SMS-side event yet</td>
+</tr>
+<tr>
+<td>At SMS / Released</td>
+<td>HTS <code>TORPEDO_IN_TIME</code> / <code>TORPEDO_OUT_TIME</code> populated</td>
+</tr>
+</tbody>
+</table>
+<p>This derivation is robust for normal flows but cannot represent abnormal states (cancellation, diversion, partial delivery) without an explicit column.</p>
+<hr>
+<h4 id="gap-42-sms_ack_time-populated-on-only-a-fraction-of-trips">Gap 4.2 — <code>SMS_ACK_TIME</code> populated on only a fraction of trips</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations (workflow) + JSW IT (clarification)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q2 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A reliable SMS-side acknowledgement timestamp that confirms a trip's arrival and acceptance at SMS.</p>
+<p><strong>Current state.</strong> WBATNGL exposes an <code>SMS_ACK_TIME</code> column on every trip record. The column is populated on approximately 55% of trips for which <code>OUT_DATE</code> is set. It is NULL on the remaining 45%, including trips that clearly completed long ago (for example, 4-day-old trips where the torpedo has been re-dispatched on another trip).</p>
+<p><strong>Gap.</strong> The acknowledgement workflow is either optional, occasionally skipped, late-filled, or only applicable to certain destinations. Without clarification, <code>SMS_ACK_TIME</code> cannot be used as the canonical "trip completed" signal.</p>
+<p><strong>Action requested.</strong> Clarify the operational workflow that populates <code>SMS_ACK_TIME</code>. Specifically: is it set automatically by a system event, or by an operator action? Under what conditions does it remain NULL? Is there a different, more reliable column that records SMS-side completion? Document the canonical "trip completed" signal.</p>
+<p><strong>Impact.</strong> End-to-end trip duration and on-time delivery KPIs cannot rely on <code>SMS_ACK_TIME</code>. Inferred completion signals (such as HTS arrival or 24-hour staleness) are used as substitutes, but these are not a substitute for an explicit source-side acknowledgement.</p>
+<h5 id="technical-detail_12">Technical Detail</h5>
+<p>Coverage probe:</p>
+<pre><code class="language-sql">SELECT
+    COUNT(*)                                          AS total_30d,
+    COUNT(out_date)                                   AS with_out_date,
+    COUNT(sms_ack_time)                               AS with_sms_ack,
+    COUNT(*) FILTER (WHERE out_date     IS NOT NULL
+                       AND sms_ack_time IS NULL)      AS out_set_ack_null,
+    ROUND(100.0 * COUNT(*) FILTER
+            (WHERE out_date IS NOT NULL
+                AND sms_ack_time IS NULL)
+            / NULLIF(COUNT(out_date), 0), 1)          AS pct_ack_missing
+FROM   wbatngl_trip_mirror
+WHERE  first_tare_time &gt;= NOW() - INTERVAL '30 days';
+</code></pre>
+<p>Result (executed 2026-05-14):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">total_30d</th>
+<th style="text-align: right;">with_out_date</th>
+<th style="text-align: right;">with_sms_ack</th>
+<th style="text-align: right;">out_set_ack_null</th>
+<th style="text-align: right;">pct_ack_missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">3,307</td>
+<td style="text-align: right;">2,988</td>
+<td style="text-align: right;">(significantly fewer)</td>
+<td style="text-align: right;">1,817</td>
+<td style="text-align: right;">≈ 45%</td>
+</tr>
+</tbody>
+</table>
+<p>The high NULL rate is not a small edge case — it is a structural property of the data flow.</p>
+<hr>
+<h4 id="gap-43-no-trip-failure-diversion-or-rejection-event-captured">Gap 4.3 — No trip-failure, diversion, or rejection event captured</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q4 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> An event record when a trip fails for any reason: mechanical issue mid-route, rejection at SMS gate, operational decision to divert to a different destination, off-spec metal at SMS, or any other interruption that prevents normal delivery.</p>
+<p><strong>Current state.</strong> No failure-event column or table is exposed in any of the four source databases inspected. A failed trip is data-identical to a delayed-but-successful trip: <code>OUT_DATE</code> is set, <code>SMS_ACK_TIME</code> is NULL, no HTS heat exists for the torpedo within the expected time window.</p>
+<p><strong>Gap.</strong> Failed trips cannot be distinguished from in-flight trips except by inference (24-hour staleness rule). The reason a trip failed is not represented anywhere.</p>
+<p><strong>Action requested.</strong> Either (a) extend the WBATNGL trip view with a <code>TRIP_OUTCOME</code> column whose values include <code>DELIVERED</code>, <code>DIVERTED</code>, <code>REJECTED</code>, <code>MECHANICAL_FAIL</code>, <code>OPS_CANCELLED</code>, plus an optional <code>OUTCOME_REASON</code> text, or (b) provide a separate events table (<code>WB_TRIP_EVENTS</code>) recording each exception with trip-ID, timestamp, reason code, and free-text comment.</p>
+<p><strong>Impact.</strong> Trip success rate cannot be reported. Daily failure attribution by reason is not possible. Operational dashboards cannot generate failure alerts. The single number "% of dispatches that successfully reached SMS" cannot be computed accurately.</p>
+<h5 id="technical-detail_13">Technical Detail</h5>
+<p>Verification SQL:</p>
+<pre><code class="language-sql">SELECT owner, table_name
+FROM   all_tables
+WHERE  table_name LIKE '%EVENT%'
+   OR  table_name LIKE '%EXCEPTION%'
+   OR  table_name LIKE '%FAIL%'
+   OR  table_name LIKE '%REJECT%'
+   OR  table_name LIKE '%DIVERT%'
+ORDER  BY owner, table_name;
+-- Returns: 0 rows accessible to ITROSYSP or ICT_IFACE
+</code></pre>
+<p>No table whose name suggests trip-failure or exception capture is accessible. Inference from data shape is the only available mechanism.</p>
+<hr>
+<h4 id="gap-44-received_date-semantics-undocumented">Gap 4.4 — <code>RECEIVED_DATE</code> semantics undocumented</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q2 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A documented definition of every timestamp column on the WBATNGL trip view, particularly <code>RECEIVED_DATE</code> which appears to be related to SMS-side receipt but has unclear semantics.</p>
+<p><strong>Current state.</strong> WBATNGL exposes <code>RECEIVED_DATE</code> alongside <code>SMS_ACK_TIME</code>. Both are populated on a subset of trips but are not always set together; their relationship is not documented.</p>
+<p><strong>Gap.</strong> Without semantics it is unclear whether <code>RECEIVED_DATE</code> represents SMS arrival, SMS receipt acknowledgement, or some intermediate event. It cannot be used reliably as either a primary or backup completion signal.</p>
+<p><strong>Action requested.</strong> Provide a written definition of <code>RECEIVED_DATE</code> and its relationship to <code>SMS_ACK_TIME</code>. Confirm whether one is a backup for the other, whether they record different operational events, or whether the divergence indicates a workflow change.</p>
+<p><strong>Impact.</strong> Alternative completion-signal logic that might rely on <code>RECEIVED_DATE</code> cannot be designed without semantic confirmation. The column appears in trip records but cannot be safely consumed.</p>
+<h5 id="technical-detail_14">Technical Detail</h5>
+<p>Both columns appear on the same trip record. Their population pattern across a sample suggests they may record distinct operational events, but the source documentation does not describe them.</p>
+<hr>
+<h4 id="gap-45-trip-identifier-composite-format-not-documented">Gap 4.5 — Trip identifier composite format not documented</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>ENHANCEMENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>None</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Documentation of the structure of the <code>TRIP_ID</code> field — specifically its components and their meanings.</p>
+<p><strong>Current state.</strong> <code>TRIP_ID</code> values follow a composite pattern containing what appear to be a sequence number, a torpedo reference, and a date component. The pattern is observable from data but not formally defined in any accompanying documentation.</p>
+<p><strong>Gap.</strong> Consumers parsing <code>TRIP_ID</code> rely on observed patterns rather than a published specification. Pattern changes at source could silently break parsers.</p>
+<p><strong>Action requested.</strong> Document the format spec of <code>TRIP_ID</code> in the WBATNGL view definition or accompanying technical notes. If the components carry independent meaning, consider exposing them as separate columns.</p>
+<p><strong>Impact.</strong> Low. Trip lookups by ID work correctly today. The risk is forward-compatibility.</p>
+<h5 id="sample-data_4">Sample data</h5>
+<p>Observed <code>TRIP_ID</code> values from live data (2026-05-14):</p>
+<table>
+<thead>
+<tr>
+<th>TRIP_ID</th>
+<th>LADLENO</th>
+<th>OUT_DATE</th>
+<th>Apparent structure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8373TLC 372140526</td>
+<td>37</td>
+<td>2026-05-14 ≈ 12:36</td>
+<td><code>8373</code> + torpedo <code>TLC 37</code> + date <code>21405 26</code></td>
+</tr>
+<tr>
+<td>8378TLC 211140526</td>
+<td>21</td>
+<td>(later that day)</td>
+<td>similar pattern</td>
+</tr>
+<tr>
+<td>8377TLC 071140526</td>
+<td>7</td>
+<td>earlier same day</td>
+<td>similar pattern</td>
+</tr>
+</tbody>
+</table>
+<p>The pattern is unverified; documentation from JSW IT would confirm.</p>
+<hr>
+<h3 id="module-4-areas-not-yet-investigated">Module 4 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Trip cancellation reasons.</strong> Even where cancellation events might exist informally, the reason taxonomy is unknown.</li>
+<li><strong>Partial-delivery events.</strong> Whether a torpedo can deliver some metal at one converter and the rest at another, and whether this is captured.</li>
+<li><strong>Manual override events.</strong> When an operator forces a trip to a non-standard state, whether the override is recorded.</li>
+<li><strong>Trip duration histograms by route.</strong> Source-side statistics on typical trip duration per BF→SMS combination would help define expected times.</li>
+</ol>
+<hr>
+<h3 id="module-5-live-positioning-gps">Module 5 — Live positioning (GPS)</h3>
+<p><strong>Module summary.</strong> SuVeechi MySQL provides real-time torpedo position and a small derived dataset (status, plant-location text). Coverage spans all 53 torpedoes. Gaps relate to the snapshot-only nature of the source view (no native event history), absence of richer telemetry (speed, battery, ignition events), apparent timezone confusion in source columns, and stale rows for torpedoes that have been silent for weeks.</p>
+<hr>
+<h4 id="gap-51-status-enumeration-limited-to-three-values-no-extended-telemetry">Gap 5.1 — Status enumeration limited to three values; no extended telemetry</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 4 (Trip lifecycle); Module 5.5 (Areas not investigated)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Richer telemetry per torpedo: at minimum, speed, ignition events with timestamps, and an "online / offline" health indicator distinct from operational status.</p>
+<p><strong>Current state.</strong> SuVeechi <code>vw_unit_status_ist.status</code> carries exactly three values across all 53 torpedoes: <code>Idle</code>, <code>Moving</code>, <code>Ign Off</code>. No other telemetry field is exposed.</p>
+<p><strong>Gap.</strong> Speed cannot be reported. Battery state, fuel level, engine hours, and ignition-event history are not available. The single <code>status</code> column conflates "torpedo's engine is on and moving" with "torpedo is at a node and idle" — and is not always consistent with actual physical motion observable from GPS coordinate deltas.</p>
+<p><strong>Action requested.</strong> Request from the SuVeechi vendor a richer view exposing speed, ignition events with timestamps, and a "telemetry-online" indicator. Alternatively, confirm whether the vendor's internal data model already contains these fields and they are simply not exposed through <code>vw_unit_status_ist</code>.</p>
+<p><strong>Impact.</strong> Per-torpedo speed and route-time analytics cannot be derived directly. Anomaly detection (e.g., "torpedo at SMS but ignition off for 4 hours") is constrained.</p>
+<h5 id="technical-detail_15">Technical Detail</h5>
+<p>Schema of <code>vw_unit_status_ist</code> (MySQL — confirmed via DBeaver 2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Sample value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unitname</code></td>
+<td>VARCHAR</td>
+<td><code>TLC 01</code> (space-separated form)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>VARCHAR</td>
+<td><code>Idle</code> / <code>Moving</code> / <code>Ign Off</code></td>
+</tr>
+<tr>
+<td><code>location</code></td>
+<td>TEXT</td>
+<td><code>"At  SMS3* "</code> (free text, see Module 6)</td>
+</tr>
+<tr>
+<td><code>latitude</code></td>
+<td>DECIMAL(10,7)</td>
+<td><code>15.1851633</code></td>
+</tr>
+<tr>
+<td><code>longitude</code></td>
+<td>DECIMAL(10,7)</td>
+<td><code>76.6731200</code></td>
+</tr>
+<tr>
+<td><code>reporttime_gmt</code></td>
+<td>DATETIME</td>
+<td>(UTC value)</td>
+</tr>
+<tr>
+<td><code>reporttime_ist</code></td>
+<td>DATETIME</td>
+<td>(labelled IST; see Gap 5.3)</td>
+</tr>
+</tbody>
+</table>
+<p>These are the only seven columns. No telemetry beyond position and status is available.</p>
+<hr>
+<h4 id="gap-52-snapshot-only-view-no-native-event-history">Gap 5.2 — Snapshot-only view; no native event history</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 5.1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Source-side history of position and status events per torpedo, queryable by time range.</p>
+<p><strong>Current state.</strong> <code>vw_unit_status_ist</code> is an UPSERT-style view: one row per torpedo, overwritten on each update. The vendor exposes only the current snapshot. To derive history, consumers must poll the view periodically and persist their own time-series.</p>
+<p><strong>Gap.</strong> Position and status history is constructed on the consumer side. If the consumer is offline during a window, that window's data is unrecoverable. Status changes shorter than the polling interval may be missed.</p>
+<p><strong>Action requested.</strong> Request from the SuVeechi vendor either a historical view (e.g., <code>vw_unit_status_history_ist</code>) or an event-stream API that delivers position and status events as they occur. At minimum, retain the past 90 days of events.</p>
+<p><strong>Impact.</strong> Backfill of historical motion is impossible if the consumer was offline. Time-series-based analyses (route adherence, dwell times, motion anomalies) require continuous polling without interruption.</p>
+<hr>
+<h4 id="gap-53-reporttime_ist-column-may-not-be-in-ist-as-the-name-suggests">Gap 5.3 — <code>reporttime_ist</code> column may not be in IST as the name suggests</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi) + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>TZ correctness across HMD analytics</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Consistent and correctly-labelled timestamps on all source records.</p>
+<p><strong>Current state.</strong> The view exposes two timestamp columns: <code>reporttime_gmt</code> and <code>reporttime_ist</code>. Inspection of values suggests the <code>reporttime_ist</code> column may actually carry UTC values (not IST), despite its name.</p>
+<p><strong>Gap.</strong> Without confirmation from the vendor, downstream consumers may apply a +5:30 offset when no offset is needed, or vice versa, leading to a 5h 30min systematic error in time-series and event-window analytics.</p>
+<p><strong>Action requested.</strong> Confirm from the SuVeechi vendor the exact timezone semantics of <code>reporttime_ist</code>. If the column is mislabelled, either correct the column name, correct the values, or update the view definition.</p>
+<p><strong>Impact.</strong> Any time-window logic that uses <code>reporttime_ist</code> without checking the actual offset may be 5h 30min off. Time-of-day patterns derived from the column may be displaced into adjacent shifts.</p>
+<h5 id="technical-detail_16">Technical Detail</h5>
+<p>Comparative inspection on a sample row (2026-05-13):</p>
+<pre><code class="language-sql">SELECT
+    unitname,
+    reporttime_gmt,
+    reporttime_ist,
+    TIMEDIFF(reporttime_ist, reporttime_gmt) AS apparent_offset
+FROM   vw_unit_status_ist
+LIMIT 10;
+</code></pre>
+<p>If the offset is <code>00:00:00</code> instead of <code>05:30:00</code>, the <code>_ist</code> column carries UTC values. If the offset is <code>05:30:00</code>, the column is correctly in IST.</p>
+<hr>
+<h4 id="gap-54-stale-reporttime-values-for-some-torpedoes-effectively-offline">Gap 5.4 — Stale <code>reporttime</code> values for some torpedoes (effectively offline)</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi) + JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 7 (Fleet — silent torpedoes)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A clear way to distinguish a torpedo currently online and idle from a torpedo that has been offline for an extended period.</p>
+<p><strong>Current state.</strong> SuVeechi retains the last known row for every torpedo regardless of age. Some torpedoes carry <code>reporttime_ist</code> values weeks or months in the past. The <code>status</code> for these rows is whatever it was at the time of the last update.</p>
+<p><strong>Gap.</strong> A consumer reading the snapshot view sees, for example, <code>TLC-39: Ign Off, location At &lt;some-node&gt;, reporttime 2026-03-04</code>. Without comparing the reporttime to current time, this looks like a current state when it is in fact more than two months stale.</p>
+<p><strong>Action requested.</strong> Add a <code>last_seen_online</code> or <code>is_online</code> boolean field, or define a vendor-side staleness threshold (e.g., reports older than 1 hour treated as offline). Alternatively, document the retention policy so consumers can implement the staleness check correctly.</p>
+<p><strong>Impact.</strong> "Currently active torpedo count" can be over-stated if stale rows are not filtered. Fleet utilisation calculations may include offline units as if active.</p>
+<h5 id="technical-detail_17">Technical Detail</h5>
+<p>Stale-row probe (HMD mirror, equivalent to a direct probe on SuVeechi):</p>
+<pre><code class="language-sql">SELECT
+    fleet_id,
+    last_updated,
+    EXTRACT(EPOCH FROM (NOW() - last_updated)) / 3600 AS hours_since_last_update
+FROM   fleet_live_locations
+WHERE  fleet_id = 'TLC-39'
+ORDER  BY last_updated DESC
+LIMIT 1;
+</code></pre>
+<p>Observed pattern (2026-05-13): some torpedoes have last-update times that are weeks or months old.</p>
+<hr>
+<h3 id="module-5-areas-not-yet-investigated">Module 5 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Battery and fuel telemetry.</strong> SuVeechi tracking devices typically capture device-side battery and host-vehicle fuel. Whether these are stored at the vendor side has not been confirmed.</li>
+<li><strong>Ignition-event log.</strong> Even without a full history view, an ignition-event log (timestamps of ignition transitions) would be operationally valuable.</li>
+<li><strong>Geofence-entry / exit events.</strong> SuVeechi clearly identifies "at node X" in its <code>location</code> text, indicating internal geofence logic. Whether those internal entry/exit events are exposed has not been confirmed.</li>
+</ol>
+<hr>
+<h3 id="module-6-geofencing-and-plant-node-tracking">Module 6 — Geofencing and plant-node tracking</h3>
+<p><strong>Module summary.</strong> Plant-node identification relies on free-text <code>location</code> strings from SuVeechi (e.g., "At SMS3", "0.10 KM E of HMY2") and a small internal table of node center-points. No source provides formal geofence polygons. The SuVeechi vendor likely maintains geofences internally — the format of its <code>location</code> text strongly suggests a controlled vocabulary — but these definitions are not exposed.</p>
+<hr>
+<h4 id="gap-61-no-source-for-geofence-polygons">Gap 6.1 — No source for geofence polygons</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> for boundary-sensitive features</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi) or JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q5 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Geofence polygon definitions for every operational node in the plant: producers, weighbridges, consumers, intermediate yards, and gates. Each polygon should be expressible as latitude / longitude vertex coordinates.</p>
+<p><strong>Current state.</strong> No source provides geofence definitions. The HMD internal <code>locations_coordinates</code> table contains roughly 14 single-point coordinates for the most obvious nodes. SuVeechi's <code>location</code> text strongly implies that internal geofences exist at the vendor side (otherwise the text could not be generated), but no external view exposes them.</p>
+<p><strong>Gap.</strong> Boundary-sensitive events ("torpedo entered SMS-3 at HH:MM", "torpedo left BF4 area at HH:MM") cannot be detected with point-in-polygon precision. Heuristic checks against center-point coordinates with arbitrary radii produce false positives and false negatives near node boundaries.</p>
+<p><strong>Action requested.</strong> Either (a) request the geofence definitions from the SuVeechi vendor in any structured form (KML, GeoJSON, or Oracle SDO geometry), or (b) commission JSW Operations to define and publish polygons for every operational node.</p>
+<p><strong>Impact.</strong> Stage-transition detection within trips is approximate. Per-node dwell-time analytics is approximate. Alerts based on a torpedo entering or leaving a region cannot be generated reliably.</p>
+<h5 id="technical-detail_18">Technical Detail</h5>
+<p>The HMD internal node table:</p>
+<pre><code class="language-sql">SELECT name, latitude, longitude
+FROM   locations_coordinates;
+</code></pre>
+<p>Returns roughly 14 rows covering the most-obvious nodes (BF1–BF5, COREX1, COREX2, SMS-1 through SMS-4, weighbridges). The intermediate-and-supporting nodes named in SuVeechi text (see Gap 6.3) are not present.</p>
+<hr>
+<h4 id="gap-62-no-canonical-plant-node-master-list">Gap 6.2 — No canonical plant-node master list</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q5 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A canonical, authoritative list of every operational plant node — producer, consumer, weighbridge, yard, hopper, gate, junction — used by the plant in routine operation. Each node should have a unique name, a type classification, a coordinate, and a documented role in the trip lifecycle.</p>
+<p><strong>Current state.</strong> No master node list is provided by any inspected source. JSW Operations holds this knowledge informally. The HMD internal coordinate table is incomplete.</p>
+<p><strong>Gap.</strong> Reports and dashboards reference plant nodes that are not formally documented. Some nodes named in SuVeechi location text (LRS1, LRS2, EY-AVTC Gate LC, SY-Track Hopper, BF4 Entry, HMY1 Point No.25, HMY2 PCM Point No.103, PCM, SMS2 North PS, SMS3 LC) are encountered in data but their roles and physical descriptions are not documented to HMD.</p>
+<p><strong>Action requested.</strong> Provide a canonical list from JSW Operations: node name, node type (producer / consumer / weighbridge / yard / hopper / gate / intermediate), geographic location (lat/lon or polygon), and operational role.</p>
+<p><strong>Impact.</strong> Cross-plant reporting, route-adherence checking, and node-utilisation analytics use partial data. Nodes that appear in source data without HMD-side documentation are rendered as raw strings, providing no analytical value.</p>
+<hr>
+<h4 id="gap-63-free-text-location-strings-reference-nodes-outside-the-hmd-reference-set">Gap 6.3 — Free-text <code>location</code> strings reference nodes outside the HMD reference set</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Vendor (SuVeechi) + JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 6.1 and 6.2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A controlled vocabulary of plant-node names used in the SuVeechi <code>location</code> field, with a documented mapping to operational meaning.</p>
+<p><strong>Current state.</strong> <code>location</code> is a free-text string. Observed patterns suggest two templates: <code>"At  &lt;node_name&gt;* "</code> (note: two spaces after "At") and <code>"&lt;distance&gt; KM &lt;bearing&gt; of &lt;node_name&gt;* "</code>. The asterisk and trailing space are terminators. The node names appear to be controlled (consistent across runs) but the list is not published.</p>
+<p><strong>Gap.</strong> Consumers must parse free-text and match against an undefined vocabulary. New node names appearing in <code>location</code> text cannot be interpreted programmatically until they are added to the consumer-side reference table.</p>
+<p><strong>Action requested.</strong> Publish the vendor's internal list of node names used by <code>location</code> text generation. Alternatively, expose <code>location</code> as two structured columns: <code>nearest_node</code> (controlled vocabulary) and <code>distance_from_node</code> (numeric, metres).</p>
+<p><strong>Impact.</strong> Parsing remains heuristic. Misclassification of a torpedo's position into the wrong operational area is possible at points equidistant from multiple nodes.</p>
+<h5 id="sample-data_5">Sample data</h5>
+<p>Node names observed in SuVeechi <code>location</code> strings but not present in the HMD <code>locations_coordinates</code> reference table:</p>
+<ul>
+<li>BF side / Hot Metal Yard: <code>BF1 CH2</code>, <code>BF4 CHE</code>, <code>BF4 CHW</code>, <code>BF4 Entry</code>, <code>Corex1 CHB</code>, <code>Corex2 CHC</code>, <code>HMY1- Point No.25</code>, <code>HMY2- PCM Point No.103</code>, <code>Weigh Bridge HMY2</code>, <code>Weigh Bridge (HMY1)</code>, <code>PCM (HMY1)</code></li>
+<li>SMS side: <code>SMS2 North PS</code>, <code>SMS3 LC</code>, <code>LRS1</code>, <code>LRS2</code></li>
+<li>Yard / transit: <code>EY- AVTC Gate LC</code>, <code>SY- Track Hopper</code></li>
+</ul>
+<p>These names are present in production data but unaccompanied by documentation of their meaning, role, or coordinates.</p>
+<hr>
+<h3 id="module-6-areas-not-yet-investigated">Module 6 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Route definitions.</strong> Whether the plant operates with formally defined torpedo routes (e.g., BF4 → WB HMY2 → SMS-4 via specified path) and whether route adherence is monitored.</li>
+<li><strong>One-way / restricted segments.</strong> Whether some plant track segments are one-way or restricted to certain torpedoes.</li>
+<li><strong>Vehicle types at nodes.</strong> Whether nodes are used exclusively by torpedoes or also by other plant vehicles (slag pots, scrap carriers).</li>
+</ol>
+<hr>
+<h3 id="module-7-fleet-management-53-torpedo-ladles">Module 7 — Fleet management (53 torpedo ladles)</h3>
+<p><strong>Module summary.</strong> The torpedo ladle fleet is the operating asset that connects every producer to every consumer. HMD's internal fleet registry holds 53 torpedoes; the HTS master list holds 36. Seven torpedoes have been silent for 37+ days. The torpedo identifier is normalised inconsistently across source systems. No source provides a lifecycle / status history for the fleet.</p>
+<hr>
+<h4 id="gap-71-fleet-count-discrepancy-between-hmd-53-and-hts-master-36">Gap 7.1 — Fleet count discrepancy between HMD (53) and HTS master (36)</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q11 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A canonical roster of every torpedo currently in service or on standby, with status (in service / under maintenance / under refractory campaign / retired) per unit.</p>
+<p><strong>Current state.</strong> HMD's internal <code>fleet_management</code> table contains 53 torpedo rows. HTS's <code>H_UNIT_CODE</code> master table contains 36 rows. The 17-row delta has not been reconciled.</p>
+<p><strong>Gap.</strong> The two systems disagree about the fleet size. It is unclear which is authoritative and what the missing 17 torpedoes represent (retired? loaned? not yet enrolled in HTS?).</p>
+<p><strong>Action requested.</strong> Confirm the canonical active-fleet roster. Provide a status per torpedo: in service / under maintenance / under refractory campaign / loaned / retired / decommissioned, with expected return dates where applicable.</p>
+<p><strong>Impact.</strong> "Fleet utilisation" cannot be computed against a confirmed denominator. Apparent ghost torpedoes appear in HMD reports that have no HTS history; equally, some HTS-referenced torpedoes may not appear in HMD's registry.</p>
+<h5 id="technical-detail_19">Technical Detail</h5>
+<p>Comparison probe:</p>
+<pre><code class="language-sql">SELECT 'fleet_management' AS source, COUNT(*) FROM fleet_management WHERE deleted_at IS NULL
+UNION ALL
+SELECT 'h_unit_code_mirror', COUNT(*) FROM h_unit_code_mirror;
+</code></pre>
+<p>Result (2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>source</th>
+<th style="text-align: right;">count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fleet_management</td>
+<td style="text-align: right;">53</td>
+</tr>
+<tr>
+<td>h_unit_code_mirror</td>
+<td style="text-align: right;">36</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-72-no-torpedo-lifecycle-or-status-history">Gap 7.2 — No torpedo lifecycle or status history</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 7.3 (silent torpedoes); Module 1.4 (refractory state)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A history per torpedo capturing key lifecycle events: commissioned, refractory campaign start, refractory campaign end, maintenance windows, retired.</p>
+<p><strong>Current state.</strong> Neither HTS nor any other inspected source exposes a torpedo-history table. The <code>fleet_management.status</code> column is a single current value, manually editable, with no historical record.</p>
+<p><strong>Gap.</strong> Long-term torpedo state cannot be analysed. "How long has TLC-09 been on its current refractory campaign?" or "When did TLC-25 last go through maintenance?" cannot be answered.</p>
+<p><strong>Action requested.</strong> Provide a torpedo-history table or view at JSW source side, with one row per torpedo state change.</p>
+<p><strong>Impact.</strong> Refractory-age analytics, predictive maintenance, and torpedo retirement planning cannot be supported.</p>
+<hr>
+<h4 id="gap-73-seven-torpedoes-silent-for-37-days-status-unexplained">Gap 7.3 — Seven torpedoes silent for 37+ days, status unexplained</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 5.4 (stale SuVeechi rows); Module 7.2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Source-side classification of why specific torpedoes are inactive.</p>
+<p><strong>Current state.</strong> Of the 53 torpedoes in the HMD fleet, seven have not produced any trip activity in the last 37 days as of 2026-05-13. SuVeechi position rows for these torpedoes are stale by similar margins.</p>
+<p><strong>Gap.</strong> Their state is not classified at source. Without classification, an observer cannot tell whether each silent torpedo is in long-term refractory campaign, under repair, awaiting parts, or retired.</p>
+<p><strong>Action requested.</strong> Confirm the operational status of each silent torpedo and the expected return-to-service date. Capture this in the torpedo-status table proposed in Gap 7.2.</p>
+<p><strong>Impact.</strong> Fleet utilisation reporting includes silent units as if they could re-enter rotation at any moment, when in reality they may be unavailable for weeks or permanently.</p>
+<h5 id="sample-data_6">Sample data</h5>
+<p>Approximate silent-torpedo list (observed 2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>Torpedo</th>
+<th>Last activity (approx)</th>
+<th style="text-align: right;">Days silent (approx)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TLC-17</td>
+<td>(no recent trips)</td>
+<td style="text-align: right;">37+</td>
+</tr>
+<tr>
+<td>TLC-32</td>
+<td>(no recent trips)</td>
+<td style="text-align: right;">37+</td>
+</tr>
+<tr>
+<td>TLC-36</td>
+<td>(no recent trips)</td>
+<td style="text-align: right;">37+</td>
+</tr>
+<tr>
+<td>TLC-39</td>
+<td>March 2026</td>
+<td style="text-align: right;">60+</td>
+</tr>
+<tr>
+<td>TLC-41</td>
+<td>March 2026</td>
+<td style="text-align: right;">50+</td>
+</tr>
+<tr>
+<td>TLC-46</td>
+<td>(no recent trips)</td>
+<td style="text-align: right;">37+</td>
+</tr>
+<tr>
+<td>(one further unit)</td>
+<td>(similar)</td>
+<td style="text-align: right;">similar</td>
+</tr>
+</tbody>
+</table>
+<p>Numbers approximate — exact ages depend on the day of inspection.</p>
+<hr>
+<h4 id="gap-74-torpedo-identifier-normalisation-inconsistent-across-source-systems">Gap 7.4 — Torpedo identifier normalisation inconsistent across source systems</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 1 (Producer-side); Module 9 (Consumer-side); cross-system joins</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A consistent torpedo-identifier format used across all source systems.</p>
+<p><strong>Current state.</strong> Different source systems represent the same torpedo with different identifier conventions. Observed forms include <code>9</code>, <code>09</code>, <code>TLC-9</code>, <code>TLC 9</code>, and <code>TLC09</code>. HMD normalises all of these to the canonical form <code>TLC-NN</code> at sync time, but the normalisation logic must handle each variant.</p>
+<p><strong>Gap.</strong> Cross-system joins on torpedo identity require explicit normalisation. Source-side change to the identifier format (e.g., new leading zero policy) would break the normalisation logic silently.</p>
+<p><strong>Action requested.</strong> Document a canonical identifier format at JSW source side, applied consistently across WBATNGL <code>LADLENO</code>, HTS <code>TORPEDO_NO</code>, SuVeechi <code>unitname</code>, and any future source.</p>
+<p><strong>Impact.</strong> Low operational impact today thanks to HMD-side normalisation, but represents a forward-compatibility risk and slight ongoing complexity in every join.</p>
+<h5 id="technical-detail_20">Technical Detail</h5>
+<p>Observed variations across sources:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Field</th>
+<th>Sample values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WBATNGL</td>
+<td><code>LADLENO</code> (raw)</td>
+<td><code>9</code>, <code>09</code>, <code>37</code>, <code>21</code></td>
+</tr>
+<tr>
+<td>HTS</td>
+<td><code>TORPEDO_NO</code> (raw)</td>
+<td><code>9</code>, <code>21</code></td>
+</tr>
+<tr>
+<td>SuVeechi</td>
+<td><code>unitname</code></td>
+<td><code>TLC 09</code>, <code>TLC 37</code> (space-separated)</td>
+</tr>
+<tr>
+<td>HMD canonical</td>
+<td><code>fleet_id</code></td>
+<td><code>TLC-09</code>, <code>TLC-37</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="module-7-areas-not-yet-investigated">Module 7 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Torpedo capacity (rated, current).</strong> Whether each torpedo's rated capacity is exposed and whether current capacity (post-refractory wear) is tracked.</li>
+<li><strong>Torpedo refractory life cycle.</strong> Heats-since-reline and remaining-life estimates.</li>
+<li><strong>Torpedo ownership / leasing.</strong> Whether all 53 are owned by JSW or some are leased.</li>
+</ol>
+<hr>
+<h3 id="module-8-weighbridge-audit">Module 8 — Weighbridge audit</h3>
+<p><strong>Module summary.</strong> Weighbridge accuracy is a core operational concern. HMD must verify, plant-wide, that every weighbridge produces consistent and calibrated readings. Today the canonical weighbridge list is inferred from WBATNGL <code>SOURCE_LAB</code> heuristics rather than from a master list. No calibration history is exposed by source.</p>
+<hr>
+<h4 id="gap-81-no-canonical-weighbridge-master-list">Gap 8.1 — No canonical weighbridge master list</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q5 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A canonical list of every weighbridge in the plant, with location, type, and the producers it serves.</p>
+<p><strong>Current state.</strong> Three weighbridge identities have been inferred from <code>SOURCE_LAB</code> patterns in WBATNGL data: WB HMY1, WB HMY2, LRS1. Whether additional weighbridges exist (e.g., empty-return weighbridges, secondary scales, supplier weighbridges) is not confirmed by any source.</p>
+<p><strong>Gap.</strong> Without a master list, the universe of weighbridges that HMD must audit is itself uncertain. New weighbridges could appear in the data without HMD being aware.</p>
+<p><strong>Action requested.</strong> Provide a canonical weighbridge list from JSW Operations, including any weighbridges not directly visible in WBATNGL data.</p>
+<p><strong>Impact.</strong> Audit coverage cannot be claimed as complete. Calibration analytics and weighbridge-comparison reports operate on an unverified set.</p>
+<hr>
+<h4 id="gap-82-no-calibration-history-or-drift-data-exposed">Gap 8.2 — No calibration history or drift data exposed</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 1 (Producer-side weights); Module 9 (Consumer-side weights)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Calibration events per weighbridge: calibration date, calibration result (passed / failed), reference weight, drift since last calibration.</p>
+<p><strong>Current state.</strong> No source database inspected contains weighbridge calibration history. HMD-side audit currently uses observed weight-distribution drift over time as a proxy.</p>
+<p><strong>Gap.</strong> Drift cannot be attributed to actual calibration events. A weighbridge that is genuinely out of calibration cannot be distinguished from one that has had a recent legitimate calibration.</p>
+<p><strong>Action requested.</strong> Expose a calibration-events table per weighbridge, populated by the plant's calibration team or system.</p>
+<p><strong>Impact.</strong> Weighbridge calibration drift reporting relies on inference. Recently-calibrated weighbridges cannot be flagged as such; long-uncalibrated weighbridges cannot be identified by data.</p>
+<hr>
+<h4 id="gap-83-tare-weight-and-net-weight-actual-columns-not-documented">Gap 8.3 — Tare-weight and net-weight "actual" columns not documented</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>INCONSISTENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>None</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Documentation of the relationship between <code>TARE_WEIGHT</code> / <code>TARE_WEIGHT_ACTUAL</code> and <code>NET_WEIGHT</code> / <code>NET_WEIGHT_ACTUAL</code> columns observed in WBATNGL.</p>
+<p><strong>Current state.</strong> WBATNGL trip records contain four weight columns where two might be expected. The relationship between the "raw" and "actual" variants is not documented.</p>
+<p><strong>Gap.</strong> Consumers cannot tell which value to use for which analytical purpose: is <code>NET_WEIGHT</code> the operator-entered value and <code>NET_WEIGHT_ACTUAL</code> the post-correction value? Or is <code>_ACTUAL</code> an audit-trail field?</p>
+<p><strong>Action requested.</strong> Document the semantics of the four weight columns.</p>
+<p><strong>Impact.</strong> HMD currently uses <code>NET_WEIGHT</code> for primary reporting on the assumption that it is the operator-final value. Confirmation would prevent any silent shift if the convention is otherwise.</p>
+<hr>
+<h4 id="gap-84-no-empty-return-weighing-event-captured">Gap 8.4 — No empty-return weighing event captured</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q7 in JSW weekly questions; delivery verification</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A weighing event after a torpedo has delivered to SMS and returned, confirming the torpedo is empty (or quantifying any slag carryback).</p>
+<p><strong>Current state.</strong> WBATNGL captures pre-trip tare and post-tap gross weights. No event records the empty-return weight after SMS delivery.</p>
+<p><strong>Gap.</strong> Delivery completeness cannot be verified. Slag carryback cannot be measured at source. The discrepancy between BF-side <code>NET_WEIGHT</code> and SMS-side <code>HOTMETAL_QTY</code> cannot be attributed to a specific physical cause.</p>
+<p><strong>Action requested.</strong> Confirm whether empty-return weighing happens operationally. If yes, expose the empty-return weight on the trip record. If no, scope an operational workflow to capture it.</p>
+<p><strong>Impact.</strong> Delivery-accuracy and slag-carryback reporting cannot be supported. Per-torpedo refractory-drainage hygiene metrics are not computable.</p>
+<hr>
+<h3 id="module-8-areas-not-yet-investigated">Module 8 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Weighbridge throughput per shift.</strong> Per-weighbridge transaction-rate statistics for operator-loading and bottleneck analysis.</li>
+<li><strong>Operator at weighbridge.</strong> Whether a weighbridge operator identifier is captured per transaction.</li>
+<li><strong>Truck / torpedo discrimination.</strong> Whether the same weighbridges are used by non-torpedo vehicles and how those are distinguished in the data.</li>
+</ol>
+<hr>
+<h2 id="3c-cluster-c-consumption-what-happens-at-sms">3C. Cluster C — Consumption (what happens at SMS)</h2>
+<p>This cluster addresses four modules: consumer-side trip arrival data across all four SMS units, SMS performance (yield and loss) plant-wide, SMS caster lifecycle analytics plant-wide, and end-to-end heat-trace lineage. All four modules are constrained by a structural gap: HTS provides hot-metal arrival data for SMS-2 and SMS-4 only, and provides caster-lifecycle data for SMS-4 only.</p>
+<hr>
+<h3 id="module-9-consumer-side-data-sms-1-sms-2-sms-3-sms-4">Module 9 — Consumer-side data (SMS-1, SMS-2, SMS-3, SMS-4)</h3>
+<p><strong>Module summary.</strong> HTS exposes per-heat consumer-side data — arrival timestamps, hot-metal quantities, converter identifiers — for SMS-2 (converters D, E, F, G) and SMS-4 (converters H, I). No consumer-side data is exposed for SMS-1 or SMS-3. The reasons differ between the two missing units, and clarification is required.</p>
+<hr>
+<h4 id="gap-91-sms-1-not-represented-in-hts-hot-metal-data">Gap 9.1 — SMS-1 not represented in HTS hot-metal data</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> for SMS-1 reporting</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT + JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q10 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Confirmation of whether SMS-1 is currently operational and, if so, the data source for SMS-1 hot-metal receipts.</p>
+<p><strong>Current state.</strong> <code>HTS.VW_HTS_HOTMETAL_DATA</code> returns zero rows where <code>SMS_UNIT = 'SMS-1'</code>. No HTS schema accessible to <code>ICT_IFACE</code> contains an alternative SMS-1 table.</p>
+<p><strong>Gap.</strong> It is unclear whether SMS-1 is decommissioned, currently inactive, or operational but with its data in a different source.</p>
+<p><strong>Action requested.</strong> Confirm SMS-1 operational status. If active, identify the source-of-truth for SMS-1 hot-metal receipts and arrange access.</p>
+<p><strong>Impact.</strong> SMS-1 cannot be included in plant-wide consumer-performance reporting. Any reference to "all SMS units" is implicitly limited to SMS-2 and SMS-4.</p>
+<h5 id="technical-detail_21">Technical Detail</h5>
+<p>Verification SQL (HTS):</p>
+<pre><code class="language-sql">SELECT
+    sms,
+    COUNT(*)                       AS heats,
+    MAX(torpedo_in_time)           AS last_heat
+FROM   hts_heat_mirror
+GROUP  BY sms
+ORDER  BY sms;
+</code></pre>
+<p>Result (2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>sms</th>
+<th style="text-align: right;">heats</th>
+<th>last_heat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SMS-2</td>
+<td style="text-align: right;">~33,500</td>
+<td>2026-05-14 (recent)</td>
+</tr>
+<tr>
+<td>SMS-4</td>
+<td style="text-align: right;">~1,580</td>
+<td>2026-05-14 (recent)</td>
+</tr>
+<tr>
+<td><em>(no SMS-1 row)</em></td>
+<td style="text-align: right;">—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><em>(no SMS-3 row)</em></td>
+<td style="text-align: right;">—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-92-sms-3-not-represented-in-hts-hot-metal-data">Gap 9.2 — SMS-3 not represented in HTS hot-metal data</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong> (if in scope)</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT + JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q10 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Confirmation of whether SMS-3 receives hot metal and, if so, where the data lives.</p>
+<p><strong>Current state.</strong> SMS-3 is an EAF / ZPF unit (electric / scrap-based) rather than a BOF unit. Whether it consumes any hot metal at all is unclear from data. HTS contains no SMS-3 rows; the JVMLPROD instance contains a small <code>SMS3</code> schema with five tables whose contents have not been audited.</p>
+<p><strong>Gap.</strong> SMS-3's role in hot-metal logistics is undefined for HMD's purposes.</p>
+<p><strong>Action requested.</strong> Confirm whether SMS-3 receives hot metal as part of normal operations. If yes, identify the data source and arrange access. If no, document SMS-3 as out-of-scope for hot-metal tracking.</p>
+<p><strong>Impact.</strong> Without confirmation, every plant-wide metric is implicitly silent on SMS-3.</p>
+<hr>
+<h4 id="gap-93-converter-e-sms-2-silent-for-37-days-no-source-explanation">Gap 9.3 — Converter E (SMS-2) silent for 37+ days, no source explanation</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 2.1 (downtime source); Q13</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Source-side classification of why a specific converter is inactive.</p>
+<p><strong>Current state.</strong> HTS shows zero heat activity for <code>SMS_UNIT = 'SMS-2' AND CONVERTER_NO = 'E'</code> for the last 37+ days as of 2026-05-13.</p>
+<p><strong>Gap.</strong> The status of a major SMS converter is informal knowledge, not represented in queryable form.</p>
+<p><strong>Action requested.</strong> Confirm Converter E status (offline / under maintenance / refractory campaign / other) and expected return date. Capture in the SMS-side downtime table (the HTS <code>H_EQUP_BREAKDOWN</code> is the candidate location).</p>
+<p><strong>Impact.</strong> Plant-wide SMS performance reports show Converter E at zero throughput without explanation.</p>
+<h5 id="technical-detail_22">Technical Detail</h5>
+<p>Verification SQL:</p>
+<pre><code class="language-sql">SELECT
+    converter_no,
+    COUNT(*)                        AS heats,
+    MAX(torpedo_in_time)            AS last_heat
+FROM   hts_heat_mirror
+WHERE  sms = 'SMS-2'
+GROUP  BY converter_no
+ORDER  BY converter_no;
+</code></pre>
+<p>Approximate result (2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>converter_no</th>
+<th style="text-align: right;">heats</th>
+<th>last_heat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D</td>
+<td style="text-align: right;">recent</td>
+<td>2026-05-14</td>
+</tr>
+<tr>
+<td>E</td>
+<td style="text-align: right;">older only</td>
+<td>2026-04-06 (~37+ days ago)</td>
+</tr>
+<tr>
+<td>F</td>
+<td style="text-align: right;">recent</td>
+<td>2026-05-14</td>
+</tr>
+<tr>
+<td>G</td>
+<td style="text-align: right;">recent</td>
+<td>2026-05-14</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-94-no-data-for-non-converter-destinations-pig-casting-granulation-etc">Gap 9.4 — No data for non-converter destinations (Pig Casting, Granulation, etc.)</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW Operations + JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 4 (Trip lifecycle); Q2 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Recognition and capture of non-converter destinations for hot metal: pig casting machines, granulation plants, ladle metallurgy stations, hot-metal mixers, holding furnaces.</p>
+<p><strong>Current state.</strong> HTS records heat events only — that is, only hot metal that reaches a BOF converter and produces a heat. Any hot metal directed elsewhere produces no HTS row.</p>
+<p><strong>Gap.</strong> Trips diverted to non-converter destinations have no SMS-side data trail. Such trips cannot be confirmed as completed; from the HTS perspective they look identical to trips that never arrived.</p>
+<p><strong>Action requested.</strong> Confirm what non-converter destinations exist operationally. Expose a data trail for each — at minimum, timestamp of arrival at destination and quantity received.</p>
+<p><strong>Impact.</strong> Operational completeness of the trip dataset is unclear. Without knowing what fraction of trips go to non-converter destinations, the analytical scope of "all trips" is uncertain.</p>
+<hr>
+<h3 id="module-9-areas-not-yet-investigated">Module 9 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Per-converter operator and shift.</strong> Whether the operator running each heat is captured (and whether to a sufficient level of detail).</li>
+<li><strong>Pre-arrival queueing at SMS.</strong> Whether SMS records a torpedo-arriving-but-waiting state distinct from torpedo-at-converter.</li>
+<li><strong>SMS rejection events.</strong> Whether SMS occasionally rejects an arriving torpedo and whether that is captured.</li>
+</ol>
+<hr>
+<h3 id="module-10-sms-performance-yield-loss-all-sms-units">Module 10 — SMS Performance (yield, loss) — all SMS units</h3>
+<p><strong>Module summary.</strong> Yield and loss are critical consumer-performance metrics. HTS exposes detailed caster-process and consumption data (<code>H_CASTER_HEAT_PROCESS</code>, <code>H_CASTER_CONSUMPTION</code>) for SMS-4 only. No equivalent data for SMS-2 is accessible. The SMS-2 caster data is believed to live in the <code>SPT001A</code> schema in the JVMLPROD instance, but the access user does not have read privileges on that schema.</p>
+<hr>
+<h4 id="gap-101-sms-2-caster-process-and-consumption-data-not-accessible">Gap 10.1 — SMS-2 caster process and consumption data not accessible</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> for SMS-2 yield reporting</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT (schema access)</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Q3 in JSW weekly questions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Caster process events and consumption / yield data for SMS-2 converters D, E, F, G.</p>
+<p><strong>Current state.</strong> <code>HTS.H_CASTER_HEAT_PROCESS</code> and <code>HTS.H_CASTER_CONSUMPTION</code> contain only SMS-4 heats. The JVMLPROD instance has a <code>SPT001A</code> schema containing roughly 40 tables whose names suggest caster-side data. The <code>ICT_IFACE</code> user does not have SELECT privilege on the <code>SPT001A</code> schema.</p>
+<p><strong>Gap.</strong> SMS-2 caster data is not readable. SMS-2 yield, loss categories, and process lifecycle cannot be reported.</p>
+<p><strong>Action requested.</strong> Either (a) grant read-only access to the relevant <code>SPT001A</code> tables to <code>ICT_IFACE</code>, or (b) expose a unified view (analogous to <code>HTS.VW_HTS_HOTMETAL_DATA</code>) that aggregates caster data across SMS-2 and SMS-4.</p>
+<p><strong>Impact.</strong> Approximately 95% of plant heats (those running on SMS-2 converters) are tracked only to torpedo arrival; their downstream lifecycle (yield, loss, operator notes, ladle on/off times) is invisible.</p>
+<h5 id="technical-detail_23">Technical Detail</h5>
+<p>Schema enumeration:</p>
+<pre><code class="language-sql">SELECT owner, COUNT(*) AS tables
+FROM   all_tables
+WHERE  owner IN ('SPT001A', 'HTS', 'SMS3')
+GROUP  BY owner
+ORDER  BY owner;
+</code></pre>
+<p>Result (2026-05-13):</p>
+<table>
+<thead>
+<tr>
+<th>owner</th>
+<th style="text-align: right;">tables_visible_to_ict_iface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTS</td>
+<td style="text-align: right;">(several) — full access</td>
+</tr>
+<tr>
+<td>SMS3</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td>SPT001A</td>
+<td style="text-align: right;">40+</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4 id="gap-102-sms-1-caster-data-location-unknown">Gap 10.2 — SMS-1 caster data location unknown</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>BLOCKER</strong> (if SMS-1 is in scope)</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Gap 9.1 (SMS-1 operational status)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> SMS-1 caster process and consumption data, if SMS-1 is operational.</p>
+<p><strong>Current state.</strong> No source data for SMS-1 is identifiable. Resolution depends first on confirmation of SMS-1's operational status (Gap 9.1).</p>
+<p><strong>Gap.</strong> Unknown.</p>
+<p><strong>Action requested.</strong> Subordinate to Gap 9.1.</p>
+<hr>
+<h4 id="gap-103-steel-grade-data-only-available-where-caster-data-is-accessible">Gap 10.3 — Steel grade data only available where caster data is accessible</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>SIGNIFICANT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 3 (Planning — grade mix targets); Gap 10.1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> Steel grade per heat across all SMS converters.</p>
+<p><strong>Current state.</strong> Steel grade is recorded in <code>H_CASTER_HEAT_PROCESS</code> for SMS-4 only. For SMS-2 heats, no grade data is accessible.</p>
+<p><strong>Gap.</strong> Grade-mix reporting and grade-specific yield analytics are restricted to SMS-4.</p>
+<p><strong>Action requested.</strong> Once Gap 10.1 is resolved (SMS-2 caster access), grade data should become available as a byproduct. Confirm this is the case once access is granted.</p>
+<p><strong>Impact.</strong> Plant-wide grade reports are SMS-4-only.</p>
+<hr>
+<h3 id="module-10-areas-not-yet-investigated">Module 10 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Loss-category vocabulary.</strong> Whether the eight loss categories in <code>H_CASTER_CONSUMPTION</code> are a controlled vocabulary documented at JSW.</li>
+<li><strong>Operator REMARKS quality.</strong> Whether the free-text REMARKS field is consistently used and how its content is structured (or unstructured).</li>
+</ol>
+<hr>
+<h3 id="module-11-sms-caster-analytics-all-sms-units">Module 11 — SMS caster analytics — all SMS units</h3>
+<p><strong>Module summary.</strong> Same data limitations as Module 10. SMS-4 caster fully visible; SMS-2 caster blocked by schema access; SMS-1 and SMS-3 location unknown. This module's gaps are a near-duplicate of Module 10 from a different operational angle (analytical depth rather than headline yield).</p>
+<p>The technical detail of these gaps is consolidated in Module 10 above. JSW IT actions on Module 10 will also resolve Module 11.</p>
+<hr>
+<h3 id="module-12-heat-trace">Module 12 — Heat trace</h3>
+<p><strong>Module summary.</strong> Heat trace is the end-to-end lineage view: from BF tap through weighbridge, transit, SMS arrival, caster process, and back to torpedo release. Every other module's gaps appear in this module. In particular, Heat Trace depends on Gap 1.1 (no shared identifier between WBATNGL and HTS) and Gap 10.1 (no SMS-2 caster data).</p>
+<p>This module's gaps are entirely composed of cross-references to earlier gaps. They are restated here only as a reminder that closing each upstream gap unlocks corresponding capability in Heat Trace.</p>
+<hr>
+<h4 id="gap-121-deterministic-trip-to-heat-lineage-requires-source-side-join-key">Gap 12.1 — Deterministic trip-to-heat lineage requires source-side join key</h4>
+<p>Cross-reference: see <strong>Gap 1.1</strong>.</p>
+<h4 id="gap-122-complete-heat-lineage-requires-sms-2-caster-access">Gap 12.2 — Complete heat lineage requires SMS-2 caster access</h4>
+<p>Cross-reference: see <strong>Gap 10.1</strong>.</p>
+<h4 id="gap-123-empty-return-weight-required-for-delivery-completeness-lineage">Gap 12.3 — Empty-return weight required for delivery-completeness lineage</h4>
+<p>Cross-reference: see <strong>Gap 8.4</strong>.</p>
+<h4 id="gap-124-tap-fire-timestamp-required-for-accurate-cycle-time-lineage">Gap 12.4 — Tap-fire timestamp required for accurate cycle-time lineage</h4>
+<p>Cross-reference: see <strong>Gap 1.4</strong>.</p>
+<hr>
+<h3 id="module-12-areas-not-yet-investigated">Module 12 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Torpedo refractory state at heat time.</strong> Whether refractory wear at the time a specific heat ran is recorded and could be associated with heat outcomes.</li>
+</ol>
+<hr>
+<h2 id="3d-cluster-d-cross-cutting">3D. Cluster D — Cross-cutting</h2>
+<p>This cluster addresses one module: alerts and exceptions. Alerts are not a separate data source but a derived view across all data sources. Gaps in this module are second-order — they arise from the upstream gaps in earlier modules.</p>
+<hr>
+<h3 id="module-13-alerts-and-exceptions">Module 13 — Alerts and exceptions</h3>
+<p><strong>Module summary.</strong> Alert generation requires reliable source data on which to apply rules. Where upstream data is missing, inconsistent, or incomplete, alerts cannot be generated reliably for the affected category. Most alert-related gaps therefore restate earlier upstream gaps from the alerting angle.</p>
+<hr>
+<h4 id="gap-131-chemistry-alerts-cannot-be-plant-wide">Gap 13.1 — Chemistry alerts cannot be plant-wide</h4>
+<p>Cross-reference: see <strong>Gap 1.2</strong> (Si BF4-only) and <strong>Gap 1.3</strong> (S inconsistent). Until both are resolved, chemistry-spec alerts can only run reliably on BF4 trips.</p>
+<h4 id="gap-132-equipment-breakdown-alerts-cannot-cover-the-producer-side">Gap 13.2 — Equipment-breakdown alerts cannot cover the producer side</h4>
+<p>Cross-reference: see <strong>Gap 2.1</strong>. Until a producer-side downtime source is exposed, equipment-breakdown alerts are SMS-side only.</p>
+<h4 id="gap-133-trip-failure-alerts-cannot-be-generated">Gap 13.3 — Trip-failure alerts cannot be generated</h4>
+<p>Cross-reference: see <strong>Gap 4.3</strong>. Until trip-failure events are captured at source, alerts on diversion / rejection / mechanical failure cannot be triggered.</p>
+<h4 id="gap-134-gps-stale-alerts-conflate-offline-torpedoes-with-retired-ones">Gap 13.4 — GPS-stale alerts conflate offline torpedoes with retired ones</h4>
+<p>Cross-reference: see <strong>Gap 5.4</strong> and <strong>Gap 7.3</strong>. GPS-stale alerts currently fire for torpedoes that have been silent for weeks because they are out of service; an "operational status" field would let alerts distinguish offline-but-active from out-of-service.</p>
+<h4 id="gap-135-no-source-side-alert-warning-feed">Gap 13.5 — No source-side alert / warning feed</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td><strong>ENHANCEMENT</strong></td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>JSW IT</td>
+</tr>
+<tr>
+<td>Cross-references</td>
+<td>Module 13 overall</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Need.</strong> A source-side feed of operational warnings or exceptions emitted by JSW's plant control systems.</p>
+<p><strong>Current state.</strong> All alerts generated by HMD today are derived by HMD itself from source data plus internal rules. No source database exposes alerts or warnings emitted by upstream control systems.</p>
+<p><strong>Action requested.</strong> Confirm whether upstream plant control systems emit warnings or events that could be exposed to HMD. If yes, plan exposure. If no, this remains an enhancement rather than a gap.</p>
+<hr>
+<h3 id="module-13-areas-not-yet-investigated">Module 13 — Areas not yet investigated</h3>
+<ol>
+<li><strong>Safety / incident events.</strong> Whether safety-related events (e.g., spillage, near-miss, evacuation) are captured anywhere and whether HMD should surface them.</li>
+</ol>
+<hr>
+<h2 id="4-appendices">4. Appendices</h2>
+<h3 id="appendix-a-data-source-connection-reference">Appendix A — Data-source connection reference</h3>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th>Host / instance</th>
+<th style="text-align: right;">Port</th>
+<th>Service / DB</th>
+<th>Read user</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WBATNGL</td>
+<td>10.10.1.67</td>
+<td style="text-align: right;">1522</td>
+<td>WBATNGL</td>
+<td>ITROSYSP</td>
+<td>Producer-side trips, weighbridge, BF chemistry. View <code>BF3.WB_TRANS_DATA_ITRO</code> is the canonical entry point (a UNION ALL — see Gap 1.5).</td>
+</tr>
+<tr>
+<td>HTS</td>
+<td>10.10.70.227</td>
+<td style="text-align: right;">1522</td>
+<td>JVMLPROD.JSW.IN</td>
+<td>ICT_IFACE</td>
+<td>Consumer-side heats, caster, breakdowns, torpedo master. SPT001A schema not accessible (Gap 10.1).</td>
+</tr>
+<tr>
+<td>SuVeechi</td>
+<td>10.10.156.157</td>
+<td style="text-align: right;">3306</td>
+<td>suvetracg</td>
+<td>view_user</td>
+<td>Real-time torpedo GPS, status, plant-location text. View <code>vw_unit_status_ist</code> is the only entry point.</td>
+</tr>
+<tr>
+<td>HMD Local</td>
+<td>localhost (BF4 PC)</td>
+<td style="text-align: right;">5432</td>
+<td>hmd</td>
+<td>postgres</td>
+<td>Internal HMD mirrors plus alerts, fleet, app state.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="appendix-b-cross-reference-to-the-jsw-weekly-questions">Appendix B — Cross-reference to the JSW weekly questions</h3>
+<p>The following items in the JSW Weekly Questions report (separately maintained) correspond to gaps in this document. JSW responses to these questions directly close the corresponding gaps.</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Topic</th>
+<th>Closes gap(s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Shared identifier between BF tap and SMS heat</td>
+<td>1.1, 12.1</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>SMS acknowledgement workflow</td>
+<td>4.2, 4.4, 9.4</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>SMS-2 caster data access (SPT001A)</td>
+<td>10.1, 11, 12.2</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Trip failure / diversion event capture</td>
+<td>4.3, 13.3</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Canonical node list and geofences</td>
+<td>6.1, 6.2, 6.3, 8.1</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>Production targets and schedules</td>
+<td>3.1, 3.2, 3.3</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>Empty-torpedo return weighing</td>
+<td>8.4, 12.3</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>BF-side equipment downtime</td>
+<td>2.1, 13.2</td>
+</tr>
+<tr>
+<td>Q9</td>
+<td>Direct access to LRS Oracle</td>
+<td>1.5</td>
+</tr>
+<tr>
+<td>Q10</td>
+<td>SMS-1 and SMS-3 operational scope</td>
+<td>9.1, 9.2, 10.2</td>
+</tr>
+<tr>
+<td>Q11</td>
+<td>Canonical torpedo fleet roster</td>
+<td>7.1, 7.2, 7.3</td>
+</tr>
+<tr>
+<td>Q12</td>
+<td>Weighbridge <code>closetime</code> workflow</td>
+<td>4.1, 4.2, 8.3</td>
+</tr>
+<tr>
+<td>Q13</td>
+<td>Production drop since 8 May 2026</td>
+<td>2.2, 9.3</td>
+</tr>
+</tbody>
+</table>
+<h3 id="appendix-c-glossary">Appendix C — Glossary</h3>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF</td>
+<td>Blast Furnace. Producer of hot metal. JSW Vijayanagar operates BF1, BF2, BF3, BF4, and BF5.</td>
+</tr>
+<tr>
+<td>COREX</td>
+<td>Alternative producer process. JSW operates COREX1 and COREX2 alongside the BFs.</td>
+</tr>
+<tr>
+<td>Torpedo</td>
+<td>Refractory-lined ladle railcar that transports hot metal from BF to SMS. Sometimes called a "torpedo ladle" or "submarine car".</td>
+</tr>
+<tr>
+<td>LADLENO / TORPEDO_NO</td>
+<td>Torpedo identifier. WBATNGL uses <code>LADLENO</code>; HTS uses <code>TORPEDO_NO</code>. Normalised to <code>TLC-NN</code> form by HMD.</td>
+</tr>
+<tr>
+<td>Trip</td>
+<td>The end-to-end journey of a torpedo from BF weighbridge to SMS converter (or other destination) and back.</td>
+</tr>
+<tr>
+<td>Heat</td>
+<td>The smelting cycle in a single SMS converter. One heat consumes one or more torpedo-loads of hot metal.</td>
+</tr>
+<tr>
+<td>Tap</td>
+<td>The event of pouring hot metal from a BF into a torpedo.</td>
+</tr>
+<tr>
+<td>WB / Weighbridge</td>
+<td>Scale that records torpedo gross and tare weights at the BF side.</td>
+</tr>
+<tr>
+<td>SMS</td>
+<td>Steel Melting Shop. Consumer of hot metal. JSW operates SMS-1 through SMS-4.</td>
+</tr>
+<tr>
+<td>Converter</td>
+<td>BOF (Basic Oxygen Furnace) inside an SMS. JSW operates 6 converters across SMS-2 (D, E, F, G) and SMS-4 (H, I).</td>
+</tr>
+<tr>
+<td>Caster</td>
+<td>Continuous-casting machine downstream of the converter; produces solidified steel from the heat.</td>
+</tr>
+<tr>
+<td>Yield</td>
+<td>Mass of solid steel produced divided by mass of hot metal received, expressed as percentage.</td>
+</tr>
+<tr>
+<td>LRS</td>
+<td>Liquid Reservoir / remote Oracle database containing native BF1, BF2, COREX1, COREX2 trip data, accessed today via DB Link from BF3 schema (see Gap 1.5).</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><em>End of report. Executive Summary (Section 1) to be finalised after this document is reviewed.</em></p>
+</body>
+</html>
