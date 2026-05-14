@@ -213,46 +213,46 @@ const ActiveTripsTable = ({ tick }) => {
 
     return (
         <div className="v2-card v2-active-card">
-            <div className="v2-card-h">
+            <div className="v2-card-h v2-card-h--with-controls">
                 <h3>Active Trips</h3>
                 <span className="v2-sub">
                     {total === 0 ? 'No active trips' : `Showing ${showingFrom}–${showingTo} of ${total}`}
                 </span>
-            </div>
 
-            {/* Filter / search bar */}
-            <div className="v2-active-controls">
-                <div className="v2-active-search">
-                    <Search size={13} className="v2-active-search-icon" />
-                    <input
-                        type="text"
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search Trip ID or Ladle…"
-                        className="v2-active-search-input"
-                    />
+                {/* Filter / search bar — inline in header, pushed right via margin-left:auto */}
+                <div className="v2-active-controls">
+                    <div className="v2-active-search">
+                        <Search size={13} className="v2-active-search-icon" />
+                        <input
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder="Search Trip ID or Ladle…"
+                            className="v2-active-search-input"
+                        />
+                    </div>
+                    <select
+                        value={queryParams.source}
+                        onChange={(e) => updateParams({ source: e.target.value }, { resetPage: true })}
+                        className="v2-active-select"
+                    >
+                        {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    <select
+                        value={queryParams.dest}
+                        onChange={(e) => updateParams({ dest: e.target.value }, { resetPage: true })}
+                        className="v2-active-select"
+                    >
+                        {DEST_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    <select
+                        value={queryParams.stage}
+                        onChange={(e) => updateParams({ stage: e.target.value }, { resetPage: true })}
+                        className="v2-active-select"
+                    >
+                        {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
                 </div>
-                <select
-                    value={queryParams.source}
-                    onChange={(e) => updateParams({ source: e.target.value }, { resetPage: true })}
-                    className="v2-active-select"
-                >
-                    {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <select
-                    value={queryParams.dest}
-                    onChange={(e) => updateParams({ dest: e.target.value }, { resetPage: true })}
-                    className="v2-active-select"
-                >
-                    {DEST_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <select
-                    value={queryParams.stage}
-                    onChange={(e) => updateParams({ stage: e.target.value }, { resetPage: true })}
-                    className="v2-active-select"
-                >
-                    {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
             </div>
 
             {/* Table body */}

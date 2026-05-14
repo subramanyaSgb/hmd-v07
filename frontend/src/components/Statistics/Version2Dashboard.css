@@ -472,23 +472,25 @@
 .v2-active-card {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    min-height: 480px;
+    gap: 8px;
+    min-height: 440px;
 }
 
-/* Filter / search bar */
+/* Card header with inline filter/search controls — controls right-anchored
+   beside the title via margin-left:auto. Wraps on narrow screens. */
+.v2-card-h--with-controls { flex-wrap: wrap; row-gap: 8px; }
+
 .v2-active-controls {
     display: flex;
     gap: 8px;
     align-items: center;
-    padding: 0 4px;
+    margin-left: auto;        /* push to right end of the header row */
     flex-wrap: wrap;
 }
 .v2-active-search {
     position: relative;
-    flex: 1 1 220px;
-    min-width: 200px;
-    max-width: 360px;
+    flex: 0 1 240px;
+    min-width: 180px;
 }
 .v2-active-search-icon {
     position: absolute;
