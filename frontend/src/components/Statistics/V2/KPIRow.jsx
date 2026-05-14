@@ -44,7 +44,7 @@ const KPIRow = ({ tick }) => {
                 label="ACTIVE TRIPS"
                 value={k ? k.active_trips : '—'}
                 unit=""
-                sub={k ? `of ${k.total_torpedoes} torpedoes` : ''}
+                sub="in flight right now"
                 tone="amber"
                 loading={loading && !k}
                 icon={<Truck size={14} />}

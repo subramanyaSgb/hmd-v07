@@ -4,7 +4,6 @@ import KPIRow from './V2/KPIRow';
 import FleetDonut from './V2/FleetDonut';
 import ThroughputChart from './V2/ThroughputChart';
 import ActiveTripsTable from './V2/ActiveTripsTable';
-import AlertFeed from './V2/AlertFeed';
 import ShiftBars from './V2/ShiftBars';
 import ChemHistogram from './V2/ChemHistogram';
 import SystemHealth from './V2/SystemHealth';
@@ -13,21 +12,25 @@ import './Version2Dashboard.css';
 /**
  * Version 2 Dashboard.
  *
- * 1:1 layout port of desing_idea/dashboard.jsx, adapted to V07's light
- * theme. Owns the master refresh tick (10s); heavy sections opt in to
- * slower cadences via the `tickEvery` prop.
- *
- * Sections render the 4-row grid:
+ * Layout (4 rows):
  *   Row 1 — KPIRow (4 cards — was 6 until ON-SPEC + CHEM ALERTS dropped
  *           2026-05-13, changes_tracker #181)
  *   Row 2 — Fleet donut · Throughput  (1fr / 2fr — was 3 cols with
  *           Producer→Consumer Sankey until dropped 2026-05-13 #181)
- *   Row 3 — Active trips · Alerts              (1.7 / 1 fr)
+ *   Row 3 — Active Trips (FULL WIDTH) — Alerts panel removed 2026-05-14
+ *           (changes_tracker #186) to give the trip table the room it
+ *           needs for 12 columns + pagination + filters. Alerts feed
+ *           remains in the alerts table and is surfaced via the header
+ *           bell; a dedicated Alerts page may follow.
  *   Row 4 — Shift bars · Chem histogram · System health (1.4 / 1 / 1 fr)
+ *
+ * Master tick cadence is 30s (was 10s) — matches the redesigned active
+ * trips table's refresh rate. Sections that need finer-grained refresh
+ * can opt in via cadence: 1.
  *
  * Backend contract: /api/statistics/v2/* — see backend/routes/v2_dashboard.py
  */
-const REFRESH_MS = 10_000;
+const REFRESH_MS = 30_000;
 
 const Version2Dashboard = () => {
     const [tick, setTick] = useState(0);
@@ -51,9 +54,8 @@ const Version2Dashboard = () => {
                 <ThroughputChart tick={tick} />
             </div>
 
-            <div className="v2-row v2-row-trips">
+            <div className="v2-row v2-row-trips v2-row-trips-full">
                 <ActiveTripsTable tick={tick} />
-                <AlertFeed tick={tick} />
             </div>
 
             <div className="v2-row v2-row-bottom">

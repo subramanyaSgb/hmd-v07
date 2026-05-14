@@ -51,6 +51,9 @@
    Throughput chart absorbs the freed width on the right. */
 .v2-row-middle  { grid-template-columns: 1fr 2fr; }
 .v2-row-trips   { grid-template-columns: 1.7fr 1fr; }
+/* Full-width variant: Alerts panel removed 2026-05-14, Active Trips spans
+   the entire row (changes_tracker #186). */
+.v2-row-trips-full { grid-template-columns: 1fr; }
 .v2-row-bottom  { grid-template-columns: 1.4fr 1fr 1fr; }
 
 @media (max-width: 1280px) {
@@ -459,3 +462,200 @@
 .v2-syshealth-host    { font-size: 10.5px; }
 .v2-syshealth-latency { font-size: 11.5px; font-weight: 600; color: var(--v2-text); }
 .v2-syshealth-age     { font-size: 10.5px; }
+
+/* ───────────────────────────────────────────────────────────────
+   Active Trips (V2 Dashboard row 3, full-width) — added 2026-05-14
+   changes_tracker #186. Scoped under .v2-active-* to keep these
+   table-specific styles separate from the legacy .v2-table styles
+   above which other components still use.
+   ─────────────────────────────────────────────────────────────── */
+.v2-active-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 480px;
+}
+
+/* Filter / search bar */
+.v2-active-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 0 4px;
+    flex-wrap: wrap;
+}
+.v2-active-search {
+    position: relative;
+    flex: 1 1 220px;
+    min-width: 200px;
+    max-width: 360px;
+}
+.v2-active-search-icon {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--v2-text-dim);
+    pointer-events: none;
+}
+.v2-active-search-input {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px 0 28px;
+    border-radius: 6px;
+    border: 1px solid var(--v2-line);
+    background: var(--v2-page);
+    color: var(--v2-text);
+    font-size: 12.5px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.v2-active-search-input:focus {
+    border-color: var(--v2-accent);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+}
+.v2-active-select {
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--v2-line);
+    background: var(--v2-page);
+    color: var(--v2-text);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+.v2-active-select:hover { border-color: var(--v2-text-dim); }
+.v2-active-select:focus { outline: none; border-color: var(--v2-accent); }
+.v2-active-select--sm { height: 26px; font-size: 11.5px; padding: 0 6px; }
+
+/* Table */
+.v2-active-body {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    min-height: 240px;
+}
+.v2-active-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12.5px;
+    min-width: 1100px;
+}
+.v2-active-table thead th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--v2-text-dim);
+    padding: 9px 10px;
+    background: var(--v2-page);
+    border-bottom: 1px solid var(--v2-line);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    white-space: nowrap;
+    user-select: none;
+}
+.v2-active-th--right { text-align: right; }
+.v2-active-th--sortable { cursor: pointer; }
+.v2-active-th--sortable:hover { color: var(--v2-text); }
+.v2-active-th-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.v2-active-sort-icon { color: var(--v2-accent); }
+.v2-active-table tbody td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--v2-line-soft);
+    color: var(--v2-text);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.v2-active-table tbody tr:hover { background: hsl(var(--main-bg) / 0.55); }
+.v2-active-td--right { text-align: right; }
+.v2-active-td--loc {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+.v2-active-sub-value {
+    color: var(--v2-text-dim);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+/* Stage badges */
+.v2-stage-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: hsl(var(--main-bg) / 0.8);
+    color: var(--v2-text);
+    border: 1px solid var(--v2-line-soft);
+    white-space: nowrap;
+}
+.v2-stage-badge--bf-wb     { background: hsl(214 96% 96%); color: hsl(214 80% 38%); border-color: hsl(214 80% 88%); }
+.v2-stage-badge--bf-tap    { background: hsl( 32 96% 95%); color: hsl( 32 80% 38%); border-color: hsl( 32 80% 88%); }
+.v2-stage-badge--wb-loaded { background: hsl(214 96% 96%); color: hsl(214 80% 38%); border-color: hsl(214 80% 88%); }
+.v2-stage-badge--transit   { background: hsl(140 60% 95%); color: hsl(140 60% 32%); border-color: hsl(140 60% 85%); }
+.v2-stage-badge--sms       { background: hsl(266 80% 96%); color: hsl(266 60% 42%); border-color: hsl(266 60% 88%); }
+
+/* Pagination footer */
+.v2-active-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    gap: 12px;
+    border-top: 1px solid var(--v2-line-soft);
+    font-size: 11.5px;
+    color: var(--v2-text-dim);
+    flex-wrap: wrap;
+}
+.v2-active-page-size {
+    display: flex;
+    align-items: center;
+}
+.v2-active-page-info { font-weight: 500; }
+.v2-active-page-nav {
+    display: flex;
+    gap: 4px;
+}
+.v2-active-page-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--v2-line);
+    background: var(--v2-page);
+    color: var(--v2-text);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.v2-active-page-btn:not(:disabled):hover {
+    background: hsl(var(--main-bg) / 0.7);
+    border-color: var(--v2-text-dim);
+}
+.v2-active-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Responsive — under 1200px, drop min-width and let columns squish */
+@media (max-width: 1200px) {
+    .v2-active-table { min-width: 0; font-size: 12px; }
+    .v2-active-table tbody td { padding: 8px 6px; }
+    .v2-active-table thead th { padding: 7px 6px; font-size: 10px; }
+}

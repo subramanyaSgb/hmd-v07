@@ -35,7 +35,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from ..constants import TripStatus
 from ..database.engine import get_db
 from ..database.models import (
     Alert,
@@ -43,7 +42,6 @@ from ..database.models import (
     FleetManagement,
     HtsHeatMirror,
     ShiftConfig,
-    Trip,
     User,
     WbatnglTripMirror,
 )
@@ -237,18 +235,15 @@ def overview(
     # ACTIVE_TRIP_WINDOW_HOURS so we don't include stale forgotten-ack
     # rows. Matches operations.py:201 definition exactly.
     #
-    # Pre-fix bug (changes_tracker #174): this counted V07's manual `Trip`
-    # table, which is effectively empty on BF4 because operators never
-    # create manual trips — real trip data flows from JSW's WBATNGL system
-    # via the wbatngl_trip_sync job. The KPI was therefore stuck at 0
-    # while the very same dashboard's bottom Active Trips table (which
-    # correctly reads WbatnglTripMirror) showed 5-7 live rows.
-    active_window_floor = _now_ist_naive() - timedelta(hours=ACTIVE_TRIP_WINDOW_HOURS)
-    active_trips = db.query(func.count(WbatnglTripMirror.id)).filter(
-        WbatnglTripMirror.out_date.isnot(None),
-        WbatnglTripMirror.sms_ack_time.is_(None),
-        WbatnglTripMirror.out_date >= active_window_floor,
-    ).scalar() or 0
+    # 2026-05-14 (changes_tracker #186): migrated to the new 4-rule
+    # trip-completion logic (see memory: project_trip_completion_logic.md
+    # AND _count_active_trips below). Drops dependency on sms_ack_time
+    # (NULL on 45% of WBATNGL rows). Uses HTS torpedo_out_time as the
+    # primary completion signal (verified 100% populated via probe over
+    # 30d / 5 active converters / 3168 heats). KPI count here matches
+    # the row count returned by /active-trips exactly — fixes the long
+    # standing 1-vs-7 inconsistency between Card 2 and the bottom table.
+    active_trips = _count_active_trips(db)
 
     # "of 53 torpedoes" denominator = gross fleet count (FleetManagement
     # soft-delete filter), per user decision 2026-05-13. Includes Hot
@@ -435,105 +430,300 @@ def throughput(
 
 
 # ── /active-trips ────────────────────────────────────────────────
+#
+# Trip-completion logic redesigned 2026-05-14 (changes_tracker #186).
+# Memory: project_trip_completion_logic.md
+#
+# 4-rule definition of trip lifecycle, first match wins:
+#   RULE 1: HTS torpedo_out_time exists within [out_date, out_date+6h]
+#           → COMPLETED — released from SMS
+#   RULE 2: Same torpedo has a newer WBATNGL trip (>60min after out_date)
+#           → COMPLETED — non-converter destination or unconfirmed
+#   RULE 3: out_date < now - 24h
+#           → STALE — likely failed / diverted
+#   RULE 4: default
+#           → IN FLIGHT (this is the "active" trip)
+#
+# Rules 1-3 close a trip. The /active-trips list returns rows where
+# none of 1-3 fire (Rule 4). Probe verified 100% torpedo_out_time
+# coverage across 5 converters / 3168 heats / 30 days.
+
+# Active-trip stage values (lifecycle position WITHIN an active trip):
+STAGE_AT_BF_WB    = "AT_BF_WB"      # only first_tare_time set
+STAGE_AT_BF_TAP   = "AT_BF_TAP"     # tap_no set, no gross_weight
+STAGE_WB_LOADED   = "WB_LOADED"     # gross_weight set, no out_date
+STAGE_IN_TRANSIT  = "IN_TRANSIT"    # out_date set, no HTS torpedo_in_time
+STAGE_AT_SMS      = "AT_SMS"        # HTS torpedo_in_time set, torpedo_out_time NOT set
+
+
+def _derive_stage(trip_row: dict) -> str:
+    """Compute the active-trip stage from data shape. Order matters —
+    most-progressed stage wins."""
+    if trip_row.get("torpedo_in_time"):
+        return STAGE_AT_SMS
+    if trip_row.get("out_date"):
+        return STAGE_IN_TRANSIT
+    if trip_row.get("gross_weight"):
+        return STAGE_WB_LOADED
+    if trip_row.get("tap_no"):
+        return STAGE_AT_BF_TAP
+    return STAGE_AT_BF_WB
+
+
+def _active_trips_base_sql() -> str:
+    """
+    Returns the CTE-driven SQL that produces all currently-active trips
+    (Rule 4 — none of Rules 1, 2, 3 fired). Used by both the count and
+    the paginated list. Sourced from a single SQL string so the active
+    set is defined in one place.
+
+    Returned columns are exactly the ones the API payload needs.
+    """
+    return """
+    WITH closed_by_hts AS (
+        -- Rule 1: HTS recorded torpedo_out_time within 6h of BF exit
+        SELECT DISTINCT w.id
+        FROM wbatngl_trip_mirror w
+        INNER JOIN hts_heat_mirror h
+            ON h.torpedo_no = w.fleet_id
+           AND h.torpedo_in_time >= w.out_date
+           AND h.torpedo_in_time <= w.out_date + INTERVAL '6 hours'
+           AND h.torpedo_out_time IS NOT NULL
+        WHERE w.out_date IS NOT NULL
+    ),
+    closed_by_next_trip AS (
+        -- Rule 2: same torpedo started another trip > 60min later
+        SELECT DISTINCT w1.id
+        FROM wbatngl_trip_mirror w1
+        INNER JOIN wbatngl_trip_mirror w2
+            ON w2.fleet_id = w1.fleet_id
+           AND w2.first_tare_time > COALESCE(w1.out_date, w1.first_tare_time)
+                                    + INTERVAL '60 minutes'
+    ),
+    stale_trips AS (
+        -- Rule 3: dispatched > 24h ago and not closed by Rules 1 or 2
+        SELECT id
+        FROM wbatngl_trip_mirror
+        WHERE out_date IS NOT NULL
+          AND out_date < (NOW() AT TIME ZONE 'Asia/Kolkata')::timestamp
+                         - INTERVAL '24 hours'
+    )
+    SELECT
+        w.id,
+        w.trip_id,
+        w.fleet_id,
+        w.source_lab,
+        w.destination,
+        w.first_tare_time,
+        w.out_date,
+        w.gross_weight,
+        w.net_weight,
+        w.temp,
+        w.s_l,
+        w.tap_no,
+        w.tap_hole,
+        h.heat_no,
+        h.converter_no,
+        h.sms                 AS hts_sms,
+        h.hotmetal_qty,
+        h.torpedo_in_time,
+        fp.location_text      AS current_location_text,
+        fp.last_updated       AS gps_last_updated
+    FROM wbatngl_trip_mirror w
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM hts_heat_mirror h2
+        WHERE h2.torpedo_no = w.fleet_id
+          AND w.out_date IS NOT NULL
+          AND h2.torpedo_in_time >= w.out_date
+          AND h2.torpedo_in_time <= w.out_date + INTERVAL '6 hours'
+        ORDER BY h2.torpedo_in_time ASC
+        LIMIT 1
+    ) h ON true
+    LEFT JOIN LATERAL (
+        SELECT location_text, last_updated
+        FROM fleet_live_locations fl
+        WHERE fl.fleet_id = w.fleet_id
+        ORDER BY fl.last_updated DESC
+        LIMIT 1
+    ) fp ON true
+    WHERE w.first_tare_time IS NOT NULL
+      AND w.id NOT IN (SELECT id FROM closed_by_hts)
+      AND w.id NOT IN (SELECT id FROM closed_by_next_trip)
+      AND w.id NOT IN (SELECT id FROM stale_trips)
+    """
+
+
+def _count_active_trips(db: Session) -> int:
+    """
+    Total active-trip count (Rule 4) — used by Card 2 KPI and the
+    pagination 'total' field. Single source of truth shared with
+    /active-trips so the KPI and the table can never disagree.
+    """
+    sql = "SELECT COUNT(*) FROM (" + _active_trips_base_sql() + ") AS active_set"
+    result = db.execute(text(sql)).scalar()
+    return int(result or 0)
+
+
+def _row_to_active_trip_dict(row, now_ist: datetime) -> dict:
+    """Project a SQL row (mapping) onto the API response dict. Computes
+    derived fields (stage, age_seconds, gps_stale, quality flags)."""
+    # row is a SQLAlchemy Row / RowMapping — index by column name.
+    r = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
+
+    stage = _derive_stage(r)
+
+    age_seconds = None
+    if r.get("first_tare_time"):
+        age_seconds = int(max(0, (now_ist - r["first_tare_time"]).total_seconds()))
+
+    gps_stale = False
+    gps_last = r.get("gps_last_updated")
+    if gps_last is not None:
+        # gps_last_updated is tz-aware (+05:30); compare via UTC.
+        gps_age = (datetime.utcnow().replace(tzinfo=timezone.utc) - gps_last.astimezone(timezone.utc)).total_seconds()
+        gps_stale = gps_age > 3600  # 1 hour
+
+    temp_val = float(r["temp"]) if r.get("temp") is not None else None
+    s_val    = float(r["s_l"])  if r.get("s_l")  is not None else None
+
+    # Inline quality flags (replaced the old Status column badges)
+    is_cold   = temp_val is not None and temp_val < 1450
+    is_high_s = s_val    is not None and s_val    > 0.05
+    is_late   = age_seconds is not None and age_seconds > 6 * 3600  # >6h
+
+    return {
+        "trip_id":               r.get("trip_id"),
+        "ladle":                 r.get("fleet_id"),
+        "tap_no":                r.get("tap_no"),
+        "tap_hole":              r.get("tap_hole"),
+        "source":                r.get("source_lab"),
+        "dest_destination_raw":  r.get("destination"),
+        "dest_sms":              r.get("hts_sms"),
+        "dest_converter":        r.get("converter_no"),
+        "heat_no":               r.get("heat_no"),
+        "created_at":            r["first_tare_time"].isoformat() if r.get("first_tare_time") else None,
+        "dispatched_at":         r["out_date"].isoformat() if r.get("out_date") else None,
+        "torpedo_in_time":       r["torpedo_in_time"].isoformat() if r.get("torpedo_in_time") else None,
+        "net_weight":            round(float(r["net_weight"]), 1) if r.get("net_weight") is not None else None,
+        "hotmetal_qty":          round(float(r["hotmetal_qty"]), 1) if r.get("hotmetal_qty") is not None else None,
+        "temp":                  round(temp_val, 0) if temp_val is not None else None,
+        "s":                     round(s_val, 3)    if s_val    is not None else None,
+        "stage":                 stage,
+        "current_location_text": r.get("current_location_text"),
+        "gps_last_updated":      gps_last.isoformat() if gps_last else None,
+        "gps_stale":             gps_stale,
+        "age_seconds":           age_seconds,
+        "is_cold":               is_cold,
+        "is_high_s":             is_high_s,
+        "is_late":               is_late,
+    }
+
+
+_SORTABLE_FIELDS = {
+    # API field name → SQL expression for sorting
+    "created_at":     "first_tare_time",
+    "dispatched_at":  "out_date",
+    "ladle":          "fleet_id",
+    "trip_id":        "trip_id",
+    "source":         "source_lab",
+    "dest_sms":       "hts_sms",
+    "net_weight":     "net_weight",
+    "temp":           "temp",
+    "s":              "s_l",
+    "age_seconds":    "first_tare_time",  # age = inverse of created_at
+}
+
 
 @router.get("/active-trips")
 def active_trips(
-    limit: int = Query(7, ge=1, le=50),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Substring match on trip_id or fleet_id"),
+    source: Optional[str] = Query(None, description="Filter by source_lab (BF1..COREX2)"),
+    dest:   Optional[str] = Query(None, description="Filter by SMS (SMS-1..SMS-4)"),
+    stage:  Optional[str] = Query(None, description="Filter by computed stage"),
+    sort_by: str = Query("created_at"),
+    sort_dir: str = Query("desc", regex="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_required),
 ):
     """
-    Active trip table rows. Join V07 Trip + WBATNGL mirror by tap_no /
-    fleet_id to surface chemistry alongside trip lifecycle stage. Falls
-    back to mirror-only rows if no matching V07 Trip exists.
+    Active trips list — implements the 4-rule trip-completion logic.
+
+    Returns paginated rows AND the total count so the frontend can both
+    render the page and update the Card 2 KPI counter from one round-trip.
+
+    Filters / sort / pagination are applied in Python after the CTE
+    runs, which is fine because the active set is small (typically
+    < 20 trips at any moment).
     """
-    now = datetime.utcnow()
-    yesterday = _hours_ago(24)
+    now_ist = _now_ist_naive()
 
-    # WBATNGL rows updated in the last 24h — these are the "in-flight"
-    # candidates. We then enrich with Trip.status if a matching torpedo
-    # has an active V07 Trip.
-    mirror_rows = db.query(WbatnglTripMirror).filter(
-        WbatnglTripMirror.updated_date >= yesterday,
-    ).order_by(WbatnglTripMirror.updated_date.desc()).limit(limit * 3).all()
+    rows = db.execute(text(_active_trips_base_sql())).all()
+    all_trips = [_row_to_active_trip_dict(r, now_ist) for r in rows]
 
-    # batch-fetch active Trip.status per fleet_id
-    fleet_ids = [r.fleet_id for r in mirror_rows if r.fleet_id]
-    trip_rows = db.query(Trip.torpedo_id, Trip.status).filter(
-        Trip.torpedo_id.in_(fleet_ids),
-        Trip.status.between(TripStatus.ASSIGNED, TripStatus.UNLOADING_ENDED),
-        Trip.deleted_at.is_(None),
-    ).order_by(Trip.torpedo_id, Trip.created_at.desc()).all() if fleet_ids else []
-    trip_status_by: dict[str, int] = {}
-    for tid, st in trip_rows:
-        trip_status_by.setdefault(tid, st)
+    # ─── Filters
+    if source:
+        s = source.upper()
+        all_trips = [t for t in all_trips if (t.get("source") or "").upper() == s]
+    if dest:
+        d = dest.upper()
+        # match either HTS-side mapped SMS, or raw WBATNGL destination string
+        all_trips = [
+            t for t in all_trips
+            if (t.get("dest_sms") or "").upper() == d
+               or (t.get("dest_destination_raw") or "").upper().startswith(d)
+        ]
+    if stage:
+        st = stage.upper()
+        all_trips = [t for t in all_trips if t.get("stage") == st]
+    if search:
+        q = search.strip().lower()
+        if q:
+            all_trips = [
+                t for t in all_trips
+                if q in (t.get("trip_id") or "").lower()
+                   or q in (t.get("ladle") or "").lower()
+            ]
 
-    # latest alert per torpedo for the small alert tag in the table
-    alert_rows = db.query(
-        Alert.torpedo_id, Alert.kind, Alert.tag,
-    ).filter(
-        Alert.acknowledged_at.is_(None),
-        Alert.torpedo_id.in_(fleet_ids),
-    ).order_by(Alert.torpedo_id, Alert.detected_at.desc()).all() if fleet_ids else []
-    alert_by: dict[str, dict] = {}
-    for tid, kind, tag in alert_rows:
-        alert_by.setdefault(tid, {"kind": kind, "tag": tag})
+    # ─── Sort
+    sort_field = _SORTABLE_FIELDS.get(sort_by, "first_tare_time")
+    # The API field for the dict (key in _row_to_active_trip_dict) — for
+    # most fields this is the same as sort_by. age_seconds is special:
+    # sort_dir applies inverted vs created_at (older first vs newest first).
+    api_key_for_sort = {
+        "first_tare_time": "created_at",
+        "out_date":        "dispatched_at",
+        "fleet_id":        "ladle",
+        "trip_id":         "trip_id",
+        "source_lab":      "source",
+        "hts_sms":         "dest_sms",
+        "net_weight":      "net_weight",
+        "temp":            "temp",
+        "s_l":             "s",
+    }.get(sort_field, "created_at")
+    reverse = (sort_dir == "desc")
+    all_trips.sort(
+        key=lambda t: (t.get(api_key_for_sort) is None, t.get(api_key_for_sort) or ""),
+        reverse=reverse,
+    )
 
-    result = []
-    for m in mirror_rows:
-        if len(result) >= limit:
-            break
-        trip_status = trip_status_by.get(m.fleet_id)
-        stage_idx = _trip_status_to_stage(trip_status)
-        age_min = None
-        if m.first_tare_time:
-            ref = m.sms_ack_time or now
-            age_min = int(max(0, (ref - m.first_tare_time).total_seconds() / 60))
-        result.append({
-            "trip_id":     m.trip_id,
-            "ladle":       m.fleet_id,
-            "tap_no":      m.tap_no,
-            "tap_hole":    m.tap_hole,
-            "source":      m.source_lab,
-            "destination": m.destination,
-            "net_wt":      round(float(m.net_weight or 0), 1),
-            "temp":        round(float(m.temp), 0) if m.temp is not None else None,
-            "sulfur":      round(float(m.s_l), 3) if m.s_l is not None else None,
-            "silicon":     round(float(m.si_l), 2) if m.si_l is not None else None,
-            "stage_idx":   stage_idx,
-            "trip_status": trip_status,
-            "age_min":     age_min,
-            "alert":       alert_by.get(m.fleet_id),
-        })
-    return {"trips": result, "generated_at": datetime.utcnow().isoformat() + "Z"}
+    # ─── Pagination
+    total = len(all_trips)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    end   = start + page_size
+    page_trips = all_trips[start:end]
 
-
-def _trip_status_to_stage(status: Optional[int]) -> int:
-    """
-    Map V07's 16-state TripStatus to the design's 5-stage strip:
-      0 Tap  ·  1 Weigh  ·  2 Transit  ·  3 SMS  ·  4 Return
-
-    Returns 0 when status is None (= phase unknown, we still show stage 0
-    so the dot strip renders).
-    """
-    if status is None:
-        return 0
-    s = int(status)
-    if s in (TripStatus.PENDING, TripStatus.ASSIGNED):
-        return 0  # Tap
-    if s in (TripStatus.WB_TARE_ENTRY, TripStatus.WB_TARE_RECORDED):
-        return 1  # Weigh
-    if TripStatus.PRODUCER_ENTERED <= s <= TripStatus.PRODUCER_EXITED:
-        return 1  # still at producer
-    if s == TripStatus.PRODUCER_EXITED:
-        return 2  # In Transit
-    if s in (TripStatus.WB_GROSS_ENTRY, TripStatus.WB_GROSS_RECORDED):
-        return 2  # Transit (weighbridge intermediate)
-    if TripStatus.CONSUMER_ENTERED <= s <= TripStatus.UNLOADING_ENDED:
-        return 3  # SMS
-    if s >= TripStatus.COMPLETED:
-        return 4  # Return
-    return 0
+    return {
+        "count":       total,                       # Card 2 KPI source
+        "page":        page,
+        "page_size":   page_size,
+        "total_pages": total_pages,
+        "trips":       page_trips,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+    }
 
 
 # ── /alerts ──────────────────────────────────────────────────────
