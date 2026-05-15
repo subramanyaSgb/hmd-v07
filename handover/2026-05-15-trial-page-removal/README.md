@@ -63,31 +63,24 @@ obsolete — the V07 baseline should not include these surfaces.
 
 ## BF4 deploy steps
 
-```cmd
-cd C:\Users\v_subramanya.gopal\Desktop\HMD\Development\Version_07
-git pull
+> **Path note.** The BF4 git repo lives at `C:\Users\v_subramanya.gopal\Desktop\HMD\` directly — there is NO `Development\Version_07\` subfolder on BF4. That nested structure only exists on the DSI dev laptop. The `(.venv) C:\Users\v_subramanya.gopal\Desktop\HMD>` prompt is the working directory.
 
-REM Delete the orphaned files on BF4 (mirror local repo state)
-del frontend\src\pages\SMSPerformance.jsx
-del frontend\src\pages\WeighbridgeAudit.jsx
-rmdir /S /Q frontend\src\components\SMSPerformance
-rmdir /S /Q frontend\src\components\WeighbridgeAudit
-rmdir /S /Q frontend\src\components\JswTripOperations
-del frontend\src\components\JswTripsTab.jsx
-rmdir /S /Q frontend\src\components\Statistics\V2
-del frontend\src\components\Statistics\Version2Dashboard.jsx
-del frontend\src\components\Statistics\Version2Dashboard.css
-del backend\routes\sms_performance.py
-del backend\routes\weighbridge_audit.py
-del backend\routes\heat_trace.py
-del backend\routes\v2_dashboard.py
+```cmd
+cd C:\Users\v_subramanya.gopal\Desktop\HMD
+git pull origin sprint-3-operations-live
+
+REM git pull also stages the 38 file deletions automatically —
+REM no manual `del` / `rmdir` needed. The orphaned files come down
+REM with the pull as removals.
 
 REM Rebuild frontend
 cd frontend
 npm run build
 cd ..
 
-REM Restart backend (PowerShell window running uvicorn) — Ctrl+C, re-launch
+REM Restart backend — Ctrl+C the uvicorn window, then re-launch:
+.venv\Scripts\activate.bat
+uvicorn backend.main:app --port 8000
 ```
 
 ## Verification on BF4 after restart
