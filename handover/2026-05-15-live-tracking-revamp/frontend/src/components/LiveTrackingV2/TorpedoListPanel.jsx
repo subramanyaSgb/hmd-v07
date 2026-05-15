@@ -2,42 +2,46 @@ import React, { memo } from 'react';
 import { Search } from 'lucide-react';
 
 /**
- * Left column of the V2 Live Tracking page (270 px wide).
+ * Left column of the V2 Live Tracking page.
+ * Width is fixed at 270px via grid in LiveTrackingV2.css.
  *
- * Layout (top to bottom):
+ * Renders, top to bottom:
  *   1. Title row with count "X of N"
- *   2. Search input (matches fleet_id OR location_text, case-insensitive)
- *   3. 4 status pills — pure SuVeechi: All / Idle / Moving / Ign Off
- *   4. Source dropdown (populated from /api/tracking/v2/trip-routes)
- *   5. Destination dropdown (same source)
- *   6. Scrollable list of TorpedoRow cards
+ *   2. Search input (matches fleet_id OR location_text)
+ *   3. 8 filter pills: All + 7 derived statuses (Loading / In Transit /
+ *      At SMS / Returning / Idle / Hot Repair / Ign Off)
+ *   4. Scrollable list of TorpedoRow cards
  *
- * 2026-05-15 revamp — design doc decisions #1, #2, #10, #11, #19.
- * Per the revamp, the row content is intentionally minimal:
- * [icon] TLC-XX  /  age   /   status dot + label   /   location
- * No temperature. No derived bucket. Stale rows visually distinct.
+ * The 7 status names + colors mirror the V2 dashboard donut and the
+ * design idea exactly — keeping the visual language consistent across
+ * pages.
  */
-const STATUS_FILTERS = ['All', 'Idle', 'Moving', 'Ign Off'];
+const STATUS_FILTERS = [
+    'All',
+    'Loading',
+    'In Transit',
+    'At SMS',
+    'Returning',
+    'Idle',
+    'Hot Repair',
+    'Ign Off',
+];
 
-// Decision #1 — only 3 raw SuVeechi colors + a stale override.
 export const STATUS_COLORS = {
-    Moving:    '#3b82f6',
-    Idle:      '#94a3b8',
-    'Ign Off': '#64748b',
+    Loading:      '#f59e0b',
+    'In Transit': '#3b82f6',
+    'At SMS':     '#06b6d4',
+    Returning:    '#a78bfa',
+    Idle:         '#94a3b8',
+    'Hot Repair': '#ef4444',
+    'Ign Off':    '#64748b',
 };
-
-const STALE_COLOR = '#9ca3af';
 
 const TorpedoListPanel = ({
     torpedoes,
     filtered,
     filter,
     setFilter,
-    sourceFilter,
-    setSourceFilter,
-    destFilter,
-    setDestFilter,
-    tripRoutes,           // { sources: [...], destinations: [...] }
     search,
     setSearch,
     selectedFleetId,
@@ -45,9 +49,6 @@ const TorpedoListPanel = ({
     loading,
     error,
 }) => {
-    const sources = tripRoutes?.sources || [];
-    const destinations = tripRoutes?.destinations || [];
-
     return (
         <div className="v2-track-card v2-track-list">
             <div className="v2-track-card-h">
@@ -69,7 +70,7 @@ const TorpedoListPanel = ({
                 />
             </div>
 
-            {/* Status pills (4 — pure SuVeechi) */}
+            {/* Filter pills */}
             <div className="v2-track-filter-row">
                 {STATUS_FILTERS.map(f => (
                     <button
@@ -83,36 +84,6 @@ const TorpedoListPanel = ({
                 ))}
             </div>
 
-            {/* Source dropdown */}
-            <div className="v2-track-select-row">
-                <label className="v2-track-select-lbl">Source</label>
-                <select
-                    className="v2-track-select"
-                    value={sourceFilter}
-                    onChange={(e) => setSourceFilter(e.target.value)}
-                >
-                    <option value="All">All</option>
-                    {sources.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                    ))}
-                </select>
-            </div>
-
-            {/* Destination dropdown */}
-            <div className="v2-track-select-row">
-                <label className="v2-track-select-lbl">Destination</label>
-                <select
-                    className="v2-track-select"
-                    value={destFilter}
-                    onChange={(e) => setDestFilter(e.target.value)}
-                >
-                    <option value="All">All</option>
-                    {destinations.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                    ))}
-                </select>
-            </div>
-
             {/* List */}
             <div className="v2-track-list-body">
                 {error && (
@@ -120,9 +91,7 @@ const TorpedoListPanel = ({
                 )}
                 {!error && filtered.length === 0 && !loading && (
                     <div className="v2-track-empty">
-                        {search || filter !== 'All' || sourceFilter !== 'All' || destFilter !== 'All'
-                            ? 'No matches'
-                            : 'No torpedoes'}
+                        {search || filter !== 'All' ? 'No matches' : 'No torpedoes'}
                     </div>
                 )}
                 {!error && loading && torpedoes.length === 0 && (
@@ -148,22 +117,17 @@ const TorpedoListPanel = ({
  */
 const TorpedoRow = memo(
     function TorpedoRow({ t, isSelected, onClick }) {
-        // Decision #19 — stale visual: gray status dot + 50% opacity row.
-        const isStale = !!t.is_stale;
-        const baseColor = STATUS_COLORS[t.status] || STATUS_COLORS.Idle;
-        const dotColor = isStale ? STALE_COLOR : baseColor;
-        const iconColor = isStale ? STALE_COLOR : baseColor;
-        const isMoving = !isStale && t.status === 'Moving';
-
+        const color = STATUS_COLORS[t.derived_status] || '#94a3b8';
+        const isMoving = t.derived_status === 'In Transit' || t.derived_status === 'Loading';
         const ageLabel = formatAge(t.last_report_sec);
 
         return (
             <div
-                className={`v2-track-row ${isSelected ? 'selected' : ''} ${isStale ? 'stale' : ''}`}
+                className={`v2-track-row ${isSelected ? 'selected' : ''}`}
                 onClick={() => onClick(t.fleet_id)}
             >
-                {/* Tiny torpedo SVG */}
-                <svg width="22" height="14" viewBox="0 0 32 16" className="v2-track-row-icon" style={{ color: iconColor }}>
+                {/* Tiny torpedo SVG (matches design idea's list-item icon) */}
+                <svg width="22" height="14" viewBox="0 0 32 16" className="v2-track-row-icon" style={{ color }}>
                     <ellipse cx="16" cy="8" rx="11" ry="5" fill="none" stroke="currentColor" strokeWidth="1.4" />
                     <line x1="5" y1="8" x2="27" y2="8" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
                     <circle cx="9" cy="13" r="1.5" fill="currentColor" />
@@ -175,20 +139,22 @@ const TorpedoRow = memo(
                 <div className="v2-track-row-body">
                     <div className="v2-track-row-head">
                         <span className="v2-track-row-id">{t.fleet_id}</span>
-                        <span className="v2-track-row-age">
-                            {isStale && <span className="v2-track-row-stale-tag">GPS stale · </span>}
-                            {ageLabel}
-                        </span>
+                        <span className="v2-track-row-age">{ageLabel}</span>
                     </div>
                     <div className="v2-track-row-status">
                         <span
                             className="v2-track-row-dot"
                             style={{
-                                background: dotColor,
-                                boxShadow: isMoving ? `0 0 6px ${dotColor}` : 'none',
+                                background: color,
+                                boxShadow: isMoving ? `0 0 6px ${color}` : 'none',
                             }}
                         />
-                        <span className="v2-track-row-status-label">{t.status}</span>
+                        <span className="v2-track-row-status-label">{t.derived_status}</span>
+                        {t.last_temp != null && (
+                            <span className="v2-track-row-temp">
+                                {Math.round(t.last_temp)}°C
+                            </span>
+                        )}
                     </div>
                     <div className="v2-track-row-loc">
                         {t.location_text || '—'}
@@ -197,12 +163,12 @@ const TorpedoRow = memo(
             </div>
         );
     },
-    // Custom equality — only re-render if the displayed fields actually changed.
+    // custom equality — only re-render if the displayed fields actually changed
     (prev, next) =>
         prev.isSelected === next.isSelected &&
         prev.t.fleet_id === next.t.fleet_id &&
-        prev.t.status === next.t.status &&
-        prev.t.is_stale === next.t.is_stale &&
+        prev.t.derived_status === next.t.derived_status &&
+        prev.t.last_temp === next.t.last_temp &&
         prev.t.location_text === next.t.location_text &&
         prev.t.last_report_sec === next.t.last_report_sec
 );

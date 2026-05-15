@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -7,34 +7,45 @@ import { STATUS_COLORS } from './TorpedoListPanel';
 /**
  * Center column of the V2 Live Tracking page.
  *
- * 2026-05-15 revamp — decisions:
- *   #9  Auto-fit-bounds to all torpedoes on first load (one-shot).
- *   #12 Map markers: 1px white outline + darker pill behind TLC number
- *       for higher contrast against satellite imagery.
- *   #13 Drop the "JSW Vijaynagar · Hot Metal Track" subtitle.
- *   #17 KEEP dynamic transit polylines (torpedo → trip destination,
- *       driven by Trip table data).
- *   #19 Stale rows render with gray dot.
- *   #20 YARD and REPAIR don't render (operator manages via location
- *       registry — backend filters them out via is_visible).
- *   #21 DROP the hardcoded TRACK_EDGES — no pre-drawn station-to-station
- *       lines. Only dynamic per-trip transit lines remain.
+ * Reuses Leaflet from V1 — same tile system, same pan/zoom infrastructure,
+ * same memoization discipline. The DIFFERENCE is purely visual:
+ *
+ *   - Torpedo markers are now a colored DOT + TLC number (matches design
+ *     idea), NOT V1's emoji + label rectangle.
+ *   - Plant nodes (stations) get labelled rectangles with kind-specific
+ *     stroke color.
+ *   - Track edges are dashed amber polylines between station pairs.
+ *   - Selected torpedo gets a pulsing ring via CSS keyframe.
+ *   - "In Transit" torpedoes draw an animated dashed line from their
+ *     current position to their destination station.
+ *
+ * Performance: the marker DivIcons are cached by `(fleet_id, status,
+ * isSelected)` so re-renders don't repaint. The marker subcomponent is
+ * `React.memo`'d with custom equality. Both patterns are lifted from
+ * V1's FleetMarker (tracker #34-#35) — without them, 53 markers × 5s
+ * poll fries the main thread.
  */
 
-// Default center for first paint (before fit-bounds kicks in).
+// Default center — matches V1's DEFAULT_MAP_CENTER for visual continuity.
 const DEFAULT_CENTER = [15.1750, 76.6500];
 const DEFAULT_ZOOM = 14;
 
-const STALE_COLOR = '#9ca3af';
+// Hardcoded topological connections (not geographic). These are
+// permanent plant infrastructure — won't change at runtime, so no need
+// for a backend endpoint.
+const TRACK_EDGES = [
+    ['BF-3', 'WB HMY1'], ['BF-4', 'WB HMY2'], ['BF-5', 'WB LRS1'],
+    ['WB HMY1', 'YARD'], ['WB HMY2', 'YARD'], ['WB LRS1', 'YARD'],
+    ['YARD', 'SMS-1'],   ['YARD', 'SMS-2'],   ['YARD', 'SMS-3'], ['YARD', 'SMS-4'],
+    ['YARD', 'REPAIR'],
+];
 
-// Kind → border color for station rectangles. wb / bf / sms / corex.
-// `yard` and `repair` left in for safety if registry still returns them
-// (cosmetic only — operator's responsibility to clean those rows up).
+// Kind → border color for station rectangles. Matches the design idea
+// palette but in V07's light-theme hues.
 const STATION_COLORS = {
     bf:     '#f59e0b',
     sms:    '#3b82f6',
     wb:     '#64748b',
-    corex:  '#f59e0b',
     yard:   '#10b981',
     repair: '#ef4444',
 };
@@ -47,7 +58,7 @@ function stationIcon(node) {
     if (cached) return cached;
     const color = STATION_COLORS[node.kind] || '#64748b';
     const big = node.kind === 'bf' || node.kind === 'sms';
-    const width = big ? 66 : 56;
+    const width = big ? 66 : node.kind === 'yard' ? 80 : 56;
     const height = big ? 22 : 20;
     const labelText = node.kind === 'wb'
         ? node.id.replace('_', ' ')
@@ -72,17 +83,14 @@ function stationIcon(node) {
 }
 
 // ── Torpedo divIcon (memoized cache) ─────────────────────────────
-// Decision #12 — 1px white outline around the colored dot + darker
-// semi-transparent pill behind the TLC number for satellite contrast.
 const _torpedoIconCache = new Map();
-function torpedoIcon(fleetId, status, isSelected, isStale) {
-    const key = `${fleetId}|${status}|${isSelected ? 1 : 0}|${isStale ? 1 : 0}`;
+function torpedoIcon(fleetId, derivedStatus, isSelected) {
+    const key = `${fleetId}|${derivedStatus}|${isSelected ? 1 : 0}`;
     const cached = _torpedoIconCache.get(key);
     if (cached) return cached;
-    const baseColor = STATUS_COLORS[status] || STATUS_COLORS.Idle;
-    const color = isStale ? STALE_COLOR : baseColor;
+    const color = STATUS_COLORS[derivedStatus] || '#94a3b8';
     const numberOnly = (fleetId || '').replace(/^TLC[-\s]?/i, '');
-    const moving = !isStale && status === 'Moving';
+    const moving = derivedStatus === 'In Transit' || derivedStatus === 'Loading';
     const pulseHtml = isSelected
         ? `<div class="v2-track-pulse" style="border-color: ${color};"></div>`
         : '';
@@ -92,7 +100,7 @@ function torpedoIcon(fleetId, status, isSelected, isStale) {
     const icon = L.divIcon({
         html: `
             <div class="v2-track-torpedo-marker">
-                <div class="v2-track-tlc-label">${numberOnly}</div>
+                <div class="v2-track-tlc-label" style="text-shadow: 0 1px 3px rgba(0,0,0,0.9);">${numberOnly}</div>
                 ${pulseHtml}
                 ${haloHtml}
                 <div class="v2-track-torpedo-dot" style="background: ${color};"></div>
@@ -105,12 +113,12 @@ function torpedoIcon(fleetId, status, isSelected, isStale) {
     return icon;
 }
 
-// ── Memoized marker subcomponent ──────────────────────────────────
+// ── Memoized marker subcomponent (pattern from V1 FleetMarker) ───
 const TorpedoMarker = memo(
     function TorpedoMarker({ t, isSelected, onClick }) {
         const icon = useMemo(
-            () => torpedoIcon(t.fleet_id, t.status, isSelected, t.is_stale),
-            [t.fleet_id, t.status, isSelected, t.is_stale]
+            () => torpedoIcon(t.fleet_id, t.derived_status, isSelected),
+            [t.fleet_id, t.derived_status, isSelected]
         );
         const position = useMemo(() => [t.lat, t.lon], [t.lat, t.lon]);
         const handleClick = useCallback(() => onClick(t.fleet_id), [onClick, t.fleet_id]);
@@ -123,8 +131,7 @@ const TorpedoMarker = memo(
         prev.t.fleet_id === next.t.fleet_id &&
         prev.t.lat === next.t.lat &&
         prev.t.lon === next.t.lon &&
-        prev.t.status === next.t.status &&
-        prev.t.is_stale === next.t.is_stale
+        prev.t.derived_status === next.t.derived_status
 );
 
 const StationMarker = memo(
@@ -148,6 +155,7 @@ const StationMarker = memo(
 const InvalidateOnResize = ({ panelOpen }) => {
     const map = useMap();
     useEffect(() => {
+        // CSS transition is 300ms — wait it out, then refresh layout.
         const id = setTimeout(() => map.invalidateSize(), 320);
         return () => clearTimeout(id);
     }, [panelOpen, map]);
@@ -156,7 +164,9 @@ const InvalidateOnResize = ({ panelOpen }) => {
 
 /**
  * Listens for the global "Center on map" event fired by the detail
- * panel's button.
+ * panel's button. Uses a window-level CustomEvent to avoid threading a
+ * map ref up through props (the map instance lives inside the
+ * MapContainer's render tree, and we only need a one-shot pan).
  */
 const CenterMapListener = () => {
     const map = useMap();
@@ -176,27 +186,6 @@ const CenterMapListener = () => {
     return null;
 };
 
-/**
- * Decision #9 — one-shot fit-bounds. On the first render where we have
- * 1+ torpedo coords, fit the map to encompass all of them with padding.
- * Subsequent ticks don't re-fit (operators that pan/zoom shouldn't have
- * the map jump back).
- */
-const FitBoundsOnce = ({ torpedoesWithCoords }) => {
-    const map = useMap();
-    const hasFittedRef = useRef(false);
-    useEffect(() => {
-        if (hasFittedRef.current) return;
-        if (!torpedoesWithCoords.length) return;
-        const bounds = L.latLngBounds(
-            torpedoesWithCoords.map(t => [t.lat, t.lon])
-        );
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
-        hasFittedRef.current = true;
-    }, [torpedoesWithCoords, map]);
-    return null;
-};
-
 const PlantMap = ({
     torpedoes,
     allTorpedoes,
@@ -205,11 +194,14 @@ const PlantMap = ({
     onSelect,
     panelOpen,
 }) => {
-    // Plant nodes lookup by id (for transit-line destination resolution).
+    // Build a lookup of plant nodes by id for transit-line endpoint
+    // resolution. Matched loosely so backend `consumer_id` like 'SMS-2'
+    // or 'SMS2' both resolve.
     const nodeById = useMemo(() => {
         const map = new Map();
         for (const n of plantNodes) {
             map.set(n.id, n);
+            // Also index by collapsed-dash form so 'SMS-2' resolves 'SMS2'
             map.set(n.id.replace('-', ''), n);
         }
         return map;
@@ -221,49 +213,59 @@ const PlantMap = ({
         [torpedoes]
     );
 
-    // Transit lines: torpedo → its trip destination station. Decision #17
-    // — driven by Trip.consumer_id surfaced as t.current_trip.destination.
-    // Lines hidden for stale torpedoes (we don't want to claim "in transit
-    // to SMS-4" for a torpedo whose GPS hasn't updated in 1h+).
+    // In-transit lines: each torpedo with derived_status='In Transit' →
+    // dashed polyline from torpedo's current position to its destination
+    // station. Skipped if destination can't be resolved to a known node.
     const transitLines = useMemo(() => {
         const lines = [];
         for (const t of torpedoesWithCoords) {
-            if (t.is_stale) continue;
-            const dest = t.current_trip?.destination;
-            if (!dest) continue;
-            const node = nodeById.get(dest) || nodeById.get(dest.replace('-', ''));
+            if (t.derived_status !== 'In Transit') continue;
+            if (!t.destination) continue;
+            const node = nodeById.get(t.destination)
+                || nodeById.get(t.destination.replace('-', ''));
             if (!node) continue;
             lines.push({
                 key: t.fleet_id,
                 positions: [[t.lat, t.lon], [node.lat, node.lon]],
-                color: STATUS_COLORS.Moving,
+                color: STATUS_COLORS['In Transit'],
             });
         }
         return lines;
     }, [torpedoesWithCoords, nodeById]);
 
+    // Track edges between stations
+    const trackEdgesResolved = useMemo(() => {
+        const edges = [];
+        for (const [a, b] of TRACK_EDGES) {
+            const na = nodeById.get(a) || nodeById.get(a.replace('-', ''));
+            const nb = nodeById.get(b) || nodeById.get(b.replace('-', ''));
+            if (!na || !nb) continue;
+            edges.push({
+                key: `${a}__${b}`,
+                positions: [[na.lat, na.lon], [nb.lat, nb.lon]],
+            });
+        }
+        return edges;
+    }, [nodeById]);
+
     const tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-    // Decision #3 — 4 stat tiles + Live indicator. Counts come from
-    // allTorpedoes (the unfiltered set) so the overlay always shows the
-    // full fleet pulse regardless of filter selection.
+    // Top-right stats — count by derived_status
     const stats = useMemo(() => {
-        const out = { Idle: 0, Moving: 0, 'Ign Off': 0, Stale: 0 };
+        const out = { Loading: 0, 'In Transit': 0, 'At SMS': 0 };
         for (const t of allTorpedoes || []) {
-            if (t.is_stale) {
-                out.Stale += 1;
-            } else if (out[t.status] != null) {
-                out[t.status] += 1;
-            }
+            if (out[t.derived_status] != null) out[t.derived_status] += 1;
         }
         return out;
     }, [allTorpedoes]);
 
     return (
         <div className="v2-track-card v2-track-map-card">
-            {/* Decision #13 — subtitle simplified to just "Plant Schematic". */}
             <div className="v2-track-card-h">
                 <h3>Plant Schematic</h3>
+                <span className="v2-track-sub">
+                    JSW Vijaynagar · Hot Metal Track
+                </span>
             </div>
             <div className="v2-track-map-body">
                 <MapContainer
@@ -280,10 +282,22 @@ const PlantMap = ({
                     />
                     <InvalidateOnResize panelOpen={panelOpen} />
                     <CenterMapListener />
-                    <FitBoundsOnce torpedoesWithCoords={torpedoesWithCoords} />
 
-                    {/* Decision #17 — dynamic transit polylines only.
-                        (#21 — hardcoded TRACK_EDGES rendering removed.) */}
+                    {/* Dashed track edges between stations */}
+                    {trackEdgesResolved.map(e => (
+                        <Polyline
+                            key={e.key}
+                            positions={e.positions}
+                            pathOptions={{
+                                color: '#f59e0b',
+                                weight: 2,
+                                opacity: 0.55,
+                                dashArray: '6 5',
+                            }}
+                        />
+                    ))}
+
+                    {/* Animated in-transit lines */}
                     {transitLines.map(l => (
                         <Polyline
                             key={`tx-${l.key}`}
@@ -314,36 +328,28 @@ const PlantMap = ({
                     ))}
                 </MapContainer>
 
-                {/* Top-right overlay — 4 stat tiles + Live indicator (decision #3 + #18) */}
+                {/* Top-right live stats card */}
                 <div className="v2-track-mapstats">
-                    <Stat n={stats.Idle}      label="Idle"    color={STATUS_COLORS.Idle} />
-                    <Stat n={stats.Moving}    label="Moving"  color={STATUS_COLORS.Moving} />
-                    <Stat n={stats['Ign Off']} label="Ign Off" color={STATUS_COLORS['Ign Off']} />
-                    <Stat n={stats.Stale}     label="Stale"   color={STALE_COLOR} />
+                    <Stat n={stats.Loading} label="Loading" color={STATUS_COLORS.Loading} />
+                    <Stat n={stats['In Transit']} label="In Transit" color={STATUS_COLORS['In Transit']} />
+                    <Stat n={stats['At SMS']} label="At SMS" color={STATUS_COLORS['At SMS']} />
                     <div className="v2-track-mapstats-live">
                         <span className="v2-track-live-dot" />
                         <span className="v2-track-live-text">Live · 5s</span>
                     </div>
                 </div>
 
-                {/* Bottom-left station legend (BF / SMS / WB only — yard/repair
-                    removed at the legend level too; if operator hasn't yet
-                    cleaned them in the registry, the markers still render
-                    but the legend reflects the intended state). */}
+                {/* Bottom-left station legend */}
                 <div className="v2-track-maplegend">
                     <div className="v2-track-maplegend-h">STATIONS</div>
-                    <div className="v2-track-maplegend-row">
-                        <span className="v2-track-maplegend-bar" style={{ background: STATION_COLORS.bf }} />
-                        <span className="v2-track-maplegend-lbl">BF</span>
-                    </div>
-                    <div className="v2-track-maplegend-row">
-                        <span className="v2-track-maplegend-bar" style={{ background: STATION_COLORS.sms }} />
-                        <span className="v2-track-maplegend-lbl">SMS</span>
-                    </div>
-                    <div className="v2-track-maplegend-row">
-                        <span className="v2-track-maplegend-bar" style={{ background: STATION_COLORS.wb }} />
-                        <span className="v2-track-maplegend-lbl">WB</span>
-                    </div>
+                    {Object.entries(STATION_COLORS).map(([k, c]) => (
+                        <div className="v2-track-maplegend-row" key={k}>
+                            <span className="v2-track-maplegend-bar" style={{ background: c }} />
+                            <span className="v2-track-maplegend-lbl">
+                                {k === 'bf' ? 'BF' : k === 'sms' ? 'SMS' : k === 'wb' ? 'WB' : k.charAt(0).toUpperCase() + k.slice(1)}
+                            </span>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>

@@ -8,36 +8,41 @@ import '../components/LiveTrackingV2/LiveTrackingV2.css';
 /**
  * Version 2 Live Tracking — 3-column container.
  *
- * 2026-05-15 revamp — design doc at
- *   docs/plans/2026-05-15-live-tracking-v2-revamp-design.md
+ * Layout (CSS grid in LiveTrackingV2.css):
+ *   - No torpedo selected:    [List 270px] [Map 1fr]
+ *   - Torpedo selected:       [List 270px] [Map 1fr] [Detail 360px]
  *
- * Owns state for the page (list, map, detail panel all see the same
- * torpedo snapshot — avoids two children both fetching).
+ * State lives here so the list, map, and detail panel all see the same
+ * `torpedoes` snapshot (avoids two children both fetching /torpedoes).
+ * The 5-second master tick is also rooted here.
  *
- * Master tick: 5s. Each tick polls /api/tracking/v2/torpedoes.
- * Source/destination dropdown values come from /api/tracking/v2/trip-routes
- * (refreshed once on mount; backend caches for 60s).
- * Plant nodes (stations) come from /api/tracking/v2/plant-nodes (once on mount).
+ * Reuses Leaflet from V1 — no new map engine. Adds design-idea visuals
+ * (labelled station rectangles, dashed track edges, dot+number torpedo
+ * markers, pulsing ring for selected, animated transit lines) ON TOP.
+ *
+ * Design doc: docs/plans/2026-05-12-livetracking-v2-design.md
  */
 const REFRESH_MS = 5_000;
 
 const LiveTrackingV2 = () => {
+    // selectedFleetId === null  →  detail panel hidden, map expands.
+    // setting it non-null       →  panel slides in.
+    // re-clicking same id       →  no-op (user spec — Q3 answer 2 = a).
     const [selectedFleetId, setSelectedFleetId] = useState(null);
-    const [filter, setFilter] = useState('All');          // status pill
-    const [sourceFilter, setSourceFilter] = useState('All');
-    const [destFilter, setDestFilter] = useState('All');
+    const [filter, setFilter] = useState('All');
     const [search, setSearch] = useState('');
     const [tick, setTick] = useState(0);
 
     const [torpedoes, setTorpedoes] = useState([]);
     const [plantNodes, setPlantNodes] = useState([]);
-    const [tripRoutes, setTripRoutes] = useState({ sources: [], destinations: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Refs guard against overlapping fetches (slow Oracle round-trip
+    // shouldn't kick off a second poll if the previous one hasn't
+    // returned yet).
     const inflightTorpedoesRef = useRef(false);
     const inflightNodesRef = useRef(false);
-    const inflightRoutesRef = useRef(false);
 
     // ── Master 5s tick ──────────────────────────────────────────
     useEffect(() => {
@@ -70,45 +75,15 @@ const LiveTrackingV2 = () => {
         inflightNodesRef.current = true;
         api.get('/api/tracking/v2/plant-nodes')
             .then(resp => setPlantNodes(resp?.nodes || []))
-            .catch(() => { /* static data — errors non-fatal */ })
+            .catch(() => { /* node coords are static, errors non-fatal */ })
             .finally(() => { inflightNodesRef.current = false; });
     }, []);
-
-    // ── /trip-routes — once on mount + every 12 ticks (60s) ─────
-    // Refresh occasionally so newly-dispatched routes appear in the
-    // dropdowns without forcing a full page reload. Backend caches
-    // for 60s anyway so this is cheap.
-    useEffect(() => {
-        if (tick % 12 !== 0) return;
-        if (inflightRoutesRef.current) return;
-        inflightRoutesRef.current = true;
-        api.get('/api/tracking/v2/trip-routes')
-            .then(resp => setTripRoutes({
-                sources: resp?.sources || [],
-                destinations: resp?.destinations || [],
-            }))
-            .catch(() => { /* non-fatal; dropdowns stay with last-known values */ })
-            .finally(() => { inflightRoutesRef.current = false; });
-    }, [tick]);
 
     // ── Derived: filtered list for the left panel ───────────────
     const filteredTorpedoes = useMemo(() => {
         const q = search.trim().toLowerCase();
         return torpedoes.filter(t => {
-            // Status pill (raw SuVeechi). "All" matches everything.
-            if (filter !== 'All' && t.status !== filter) return false;
-
-            // Source dropdown — matches current_trip.source.
-            if (sourceFilter !== 'All') {
-                if (!t.current_trip || t.current_trip.source !== sourceFilter) return false;
-            }
-
-            // Destination dropdown — matches current_trip.destination.
-            if (destFilter !== 'All') {
-                if (!t.current_trip || t.current_trip.destination !== destFilter) return false;
-            }
-
-            // Search — TLC id or location text.
+            if (filter !== 'All' && t.derived_status !== filter) return false;
             if (q) {
                 const fid = (t.fleet_id || '').toLowerCase();
                 const loc = (t.location_text || '').toLowerCase();
@@ -116,8 +91,10 @@ const LiveTrackingV2 = () => {
             }
             return true;
         });
-    }, [torpedoes, filter, sourceFilter, destFilter, search]);
+    }, [torpedoes, filter, search]);
 
+    // Stable handler — passed to memoized children. Re-clicking the
+    // same fleet_id is a no-op per spec.
     const handleSelect = React.useCallback((fleetId) => {
         if (!fleetId) return;
         setSelectedFleetId(prev => (prev === fleetId ? prev : fleetId));
@@ -136,11 +113,6 @@ const LiveTrackingV2 = () => {
                 filtered={filteredTorpedoes}
                 filter={filter}
                 setFilter={setFilter}
-                sourceFilter={sourceFilter}
-                setSourceFilter={setSourceFilter}
-                destFilter={destFilter}
-                setDestFilter={setDestFilter}
-                tripRoutes={tripRoutes}
                 search={search}
                 setSearch={setSearch}
                 selectedFleetId={selectedFleetId}
