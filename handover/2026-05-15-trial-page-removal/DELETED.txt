@@ -1,0 +1,56 @@
+# Files / folders DELETED from the V07 repo on 2026-05-15
+# Must be removed on BF4 as well during deploy.
+# Order doesn't matter; all are independent.
+
+frontend/src/pages/SMSPerformance.jsx
+frontend/src/pages/WeighbridgeAudit.jsx
+
+frontend/src/components/SMSPerformance/                  (folder, 7 files)
+  KPIRow.jsx
+  YieldTrend.jsx
+  LossPareto.jsx
+  BySMSTable.jsx
+  HeatsTable.jsx
+  HeatTraceDrawer.jsx
+  SMSPerformance.css
+
+frontend/src/components/WeighbridgeAudit/                (folder, 5 files)
+  KPIRow.jsx
+  WeighbridgeLog.jsx
+  VarianceHistogram.jsx
+  CalibrationCard.jsx
+  WeighbridgeAudit.css
+
+frontend/src/components/JswTripOperations/               (folder, 7 files)
+  JswTripOperations.jsx
+  ActiveTripBoard.jsx
+  ExceptionsQueue.jsx
+  GanttView.jsx
+  CompletedTable.jsx
+  TripDetailPane.jsx
+  JswTripOperations.css
+
+frontend/src/components/JswTripsTab.jsx                  (single file)
+
+frontend/src/components/Statistics/Version2Dashboard.jsx (single file)
+frontend/src/components/Statistics/Version2Dashboard.css (single file)
+
+frontend/src/components/Statistics/V2/                   (folder, 13 files)
+  KPIRow.jsx
+  KPICard.jsx
+  KPIBig.jsx
+  FleetDonut.jsx
+  ProducerBreakdown.jsx
+  ThroughputChart.jsx
+  ActiveTripsTable.jsx
+  AlertFeed.jsx
+  FlowSankey.jsx
+  ChemHistogram.jsx
+  ShiftBars.jsx
+  SystemHealth.jsx
+  StageDots.jsx
+
+backend/routes/sms_performance.py
+backend/routes/weighbridge_audit.py
+backend/routes/heat_trace.py
+backend/routes/v2_dashboard.py
