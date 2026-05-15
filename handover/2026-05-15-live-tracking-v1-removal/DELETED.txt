@@ -1,0 +1,5 @@
+# Files DELETED from the V07 repo on 2026-05-15 (after #195).
+# `git pull` will remove these on BF4 automatically — no manual del needed.
+
+frontend/src/pages/Dashboard.jsx                   (728 LOC — V1 Live Tracking page)
+frontend/src/components/TorpedoDrawer.jsx          (~470 LOC — V1-only right-side panel)
